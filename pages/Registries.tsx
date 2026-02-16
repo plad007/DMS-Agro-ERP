@@ -380,74 +380,6 @@ export const Registries: React.FC = () => {
         </div>
       )}
 
-      {/* VIEW BUYER MODAL */}
-      {viewingBuyer && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/80 backdrop-blur-sm p-4">
-             <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden">
-                <div className="bg-slate-50 border-b border-slate-100 p-6 flex justify-between items-center">
-                    <div className="flex items-center gap-3">
-                        <div className="p-2 bg-blue-100 rounded-lg">
-                            <Building2 className="w-6 h-6 text-blue-700" />
-                        </div>
-                        <div>
-                            <h3 className="font-bold text-lg text-slate-800">{viewingBuyer.name}</h3>
-                            <p className="text-sm text-slate-500">Cadastro de Comprador</p>
-                        </div>
-                    </div>
-                    <button onClick={() => setViewingBuyer(null)} className="text-slate-400 hover:text-slate-600">
-                        <X className="w-6 h-6" />
-                    </button>
-                </div>
-                
-                <div className="p-6 space-y-6">
-                    <div>
-                        <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Informações Jurídicas</h4>
-                        <div className="grid grid-cols-2 gap-4 bg-slate-50 p-4 rounded-lg border border-slate-200">
-                            <div>
-                                <p className="text-[10px] uppercase text-slate-500 mb-1">CNPJ</p>
-                                <p className="font-bold text-slate-800 text-lg">{viewingBuyer.doc}</p>
-                            </div>
-                             <div>
-                                <p className="text-[10px] uppercase text-slate-500 mb-1">Inscrição Estadual</p>
-                                <p className="font-bold text-slate-800 text-lg">{viewingBuyer.stateInsc}</p>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div>
-                         <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Endereço & Classificação</h4>
-                         <div className="space-y-4">
-                            <div className="flex items-start gap-3 p-3 border border-slate-100 rounded-lg">
-                                <MapPin className="w-5 h-5 text-slate-400 mt-0.5" />
-                                <div>
-                                    <p className="text-xs text-slate-500 font-bold uppercase">Endereço Fiscal</p>
-                                    <p className="text-slate-800">{viewingBuyer.address}</p>
-                                </div>
-                            </div>
-                             <div className="flex items-start gap-3 p-3 border border-slate-100 rounded-lg">
-                                <FileText className="w-5 h-5 text-slate-400 mt-0.5" />
-                                <div>
-                                    <p className="text-xs text-slate-500 font-bold uppercase">Tipo de Cliente</p>
-                                    <span className={`inline-block mt-1 px-3 py-1 rounded-full text-xs font-bold border ${
-                                        viewingBuyer.type === 'TRADING' ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-amber-50 text-amber-700 border-amber-200'
-                                    }`}>
-                                        {viewingBuyer.type === 'TRADING' ? 'TRADING / EXPORTAÇÃO' : 'MERCADO INTERNO / FÁBRICA'}
-                                    </span>
-                                </div>
-                            </div>
-                         </div>
-                    </div>
-                </div>
-
-                <div className="bg-slate-50 p-4 border-t border-slate-100 flex justify-end">
-                    <button onClick={() => setViewingBuyer(null)} className="px-6 py-2 bg-slate-800 text-white rounded-lg hover:bg-slate-900 font-medium transition-colors">
-                        Fechar
-                    </button>
-                </div>
-             </div>
-        </div>
-      )}
-
       {/* PRODUCER EDIT MODAL */}
       {isProducerModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
@@ -455,7 +387,8 @@ export const Registries: React.FC = () => {
                 <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50 sticky top-0">
                     <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2">
                         <Tractor className="w-5 h-5 text-emerald-600" />
-                        {producerForm.id?.length > 15 ? 'Editar Produtor' : 'Novo Produtor'}
+                        {/* TypeScript fix: Ensure ID exists before checking length, default to 0 */}
+                        {(producerForm.id?.length || 0) > 15 ? 'Editar Produtor' : 'Novo Produtor'}
                     </h3>
                     <button onClick={() => setIsProducerModalOpen(false)}><X className="w-5 h-5 text-slate-400" /></button>
                 </div>
@@ -572,7 +505,8 @@ export const Registries: React.FC = () => {
                  <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50 rounded-t-xl">
                     <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2">
                         <Building2 className="w-5 h-5 text-blue-600" />
-                        {buyerForm.id?.length > 15 ? 'Editar Comprador' : 'Novo Comprador'}
+                        {/* TypeScript fix: Ensure ID exists before checking length, default to 0 */}
+                        {(buyerForm.id?.length || 0) > 15 ? 'Editar Comprador' : 'Novo Comprador'}
                     </h3>
                     <button onClick={() => setIsBuyerModalOpen(false)}><X className="w-5 h-5 text-slate-400" /></button>
                 </div>
