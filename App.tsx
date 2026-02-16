@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Layout } from './components/Layout';
 import { Dashboard } from './pages/Dashboard';
@@ -11,15 +10,26 @@ import { Contract, Shipment, MarketData } from './types';
 export default function App() {
   const [activePage, setActivePage] = useState('dashboard');
   
-  // Simulated Global State (would be Context API or Redux in larger app)
   const [contracts, setContracts] = useState<Contract[]>([]);
   const [shipments, setShipments] = useState<Shipment[]>([]);
   const [marketData, setMarketData] = useState<MarketData>({ usd: 0, cbotSoy: 0, cbotCorn: 0 });
+  const [loading, setLoading] = useState(true);
 
-  const refreshData = () => {
-    setContracts(getContracts());
-    setShipments(getShipments());
-    setMarketData(getMarketData());
+  const refreshData = async () => {
+    setLoading(true);
+    try {
+      const [contractsData, shipmentsData] = await Promise.all([
+        getContracts(),
+        getShipments()
+      ]);
+      setContracts(contractsData);
+      setShipments(shipmentsData);
+      setMarketData(getMarketData()); // Still sync mock for now
+    } catch (error) {
+      console.error("Failed to load data", error);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -27,6 +37,15 @@ export default function App() {
   }, []);
 
   const renderContent = () => {
+    if (loading) {
+      return (
+        <div className="h-full flex flex-col items-center justify-center text-emerald-800">
+           <div className="w-12 h-12 border-4 border-emerald-200 border-t-emerald-600 rounded-full animate-spin mb-4"></div>
+           <p className="animate-pulse">Carregando dados do sistema...</p>
+        </div>
+      );
+    }
+
     switch (activePage) {
       case 'dashboard':
         return <Dashboard marketData={marketData} contracts={contracts} />;

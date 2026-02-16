@@ -23,6 +23,7 @@ const YEARS = [2024, 2025, 2026, 2027, 2028];
 
 export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onUpdate }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   
   // Report State
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
@@ -86,8 +87,12 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
   });
 
   useEffect(() => {
-    setProducersList(getProducers());
-    setBuyersList(getBuyers());
+    const loadAuxData = async () => {
+        const [p, b] = await Promise.all([getProducers(), getBuyers()]);
+        setProducersList(p);
+        setBuyersList(b);
+    };
+    loadAuxData();
   }, []);
 
   // Update underlying dates when UI selectors change
@@ -124,13 +129,10 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
   // Handlers
   const handlePrint = (contract: Contract) => {
     setPrintingContract(contract);
-    // Note: The actual window.print() is called inside the Portal component effect
   };
 
   const handlePdf = (contract: Contract) => {
-      // PDF generation is essentially printing to PDF
       setPrintingContract(contract);
-      // We could show a toast here instructing user to select "Save as PDF"
   };
 
   const handleSendLink = (contract: Contract) => {
@@ -174,8 +176,11 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
     setIsModalOpen(true);
   };
 
-  const handleCreate = () => {
-    const newNumber = generateContractNumber('SOJA', '23/24');
+  const handleCreate = async () => {
+    setIsLoading(true);
+    const newNumber = await generateContractNumber('SOJA', '23/24');
+    setIsLoading(false);
+
     setEditingContract(null);
     setFormData({
       number: newNumber,
@@ -223,6 +228,13 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
     }
   };
 
+  const handleProductChange = async (newProduct: 'SOJA' | 'MILHO' | 'TRIGO') => {
+      setFormData({...formData, product: newProduct});
+      // Generate new number based on product
+      const newNum = await generateContractNumber(newProduct, formData.crop || '23/24');
+      setFormData(prev => ({...prev, number: newNum}));
+  };
+
   const handleVolumeChange = (value: string, unit: 'BAGS' | 'TONS') => {
       const val = Number(value);
       if (unit === 'BAGS') {
@@ -234,11 +246,13 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
       }
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!formData.sellerName || !formData.buyerName || !formData.totalBags || !formData.pickupLocation) {
         alert("Preencha os campos obrigatórios (Vendedor, Comprador, Volume, Local)");
         return;
     }
+
+    setIsLoading(true);
 
     const paymentDate = formData.paymentDate || new Date().toISOString().split('T')[0];
     const commissionDate = new Date(paymentDate);
@@ -246,6 +260,7 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
 
     if (editingContract?.isFixed && formData.finalPrice !== editingContract.finalPrice) {
         if(!confirm("ALERTA DE AUDITORIA: Você está alterando o preço de um contrato já fixado. Confirma a alteração?")) {
+            setIsLoading(false);
             return;
         }
     }
@@ -281,8 +296,9 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
       createdAt: editingContract?.createdAt || new Date().toISOString()
     };
 
-    saveContract(finalContract);
-    onUpdate();
+    await saveContract(finalContract);
+    await onUpdate(); // Refresh global list
+    setIsLoading(false);
     setIsModalOpen(false);
   };
 
@@ -361,7 +377,6 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
   // --- PORTAL COMPONENT FOR PRINTING ---
   const PrintableContract = ({ contract, onClose }: { contract: Contract, onClose: () => void }) => {
     useEffect(() => {
-        // Small delay to ensure render is complete before triggering print
         const timer = setTimeout(() => {
             window.print();
         }, 500);
@@ -402,13 +417,11 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
                     {/* Header */}
                     <div className="flex justify-between items-center p-2 border-b border-black h-28">
                         <div className="text-emerald-800 h-full flex items-center pl-2">
-                            {/* LOGO IMAGE SUPPORT - Standalone since text is removed */}
                             <img 
                                 src={LOGO_URL} 
                                 alt="DMS Agro" 
                                 className="h-24 w-auto object-contain"
                                 onError={(e) => {
-                                    // Fallback to Sprout icon if image not found
                                     e.currentTarget.style.display = 'none';
                                     e.currentTarget.nextElementSibling?.classList.remove('hidden');
                                 }}
@@ -638,7 +651,7 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
             <Download className="w-5 h-5 mr-2" />
             Exportar
           </button>
-          <button onClick={handleCreate} className="flex items-center px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 shadow-sm transition-colors">
+          <button onClick={handleCreate} disabled={isLoading} className="flex items-center px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 shadow-sm transition-colors disabled:opacity-50">
             <Plus className="w-5 h-5 mr-2" />
             Novo Contrato
           </button>
@@ -764,7 +777,7 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
           document.body
       )}
 
-      {/* REPORT GENERATION MODAL (Keep as is, but could be refactored to Portal too if needed) */}
+      {/* REPORT GENERATION MODAL */}
       {isReportModalOpen && (
         <div className="fixed inset-0 z-[100] flex bg-slate-900/80 backdrop-blur-sm no-print items-start justify-center overflow-y-auto">
              <div className="w-full max-w-[1200px] my-10 flex gap-6">
@@ -920,7 +933,7 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
                 <span className="text-2xl">&times;</span>
               </button>
             </div>
-             {/* ... (Existing Form Content) ... */}
+             
             <div className="p-6 space-y-8">
                 {/* 1. Parties & Product (Updated) */}
                 <section>
@@ -933,10 +946,7 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
                             <select 
                                 className="w-full rounded-lg border border-slate-300 p-2.5 bg-slate-50 focus:bg-white"
                                 value={formData.product}
-                                onChange={(e) => {
-                                    setFormData({...formData, product: e.target.value as any});
-                                    setTimeout(() => setFormData(prev => ({...prev, number: generateContractNumber(e.target.value, prev.crop || '23/24')})), 0);
-                                }}
+                                onChange={(e) => handleProductChange(e.target.value as any)}
                             >
                                 <option value="SOJA">Soja</option>
                                 <option value="MILHO">Milho</option>
@@ -1022,7 +1032,8 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
                 
                 <div className="p-6 border-t border-slate-100 flex justify-end gap-3 bg-slate-50 rounded-b-xl sticky bottom-0">
                     <button onClick={() => setIsModalOpen(false)} className="px-5 py-2 text-slate-600 hover:bg-slate-200 rounded-lg">Cancelar</button>
-                    <button onClick={handleSave} className="px-5 py-2 bg-emerald-600 text-white font-medium rounded-lg hover:bg-emerald-700 shadow-sm">
+                    <button onClick={handleSave} disabled={isLoading} className="px-5 py-2 bg-emerald-600 text-white font-medium rounded-lg hover:bg-emerald-700 shadow-sm flex items-center">
+                        {isLoading && <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin mr-2"></div>}
                         Salvar Contrato
                     </button>
                 </div>

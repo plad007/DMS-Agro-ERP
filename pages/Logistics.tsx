@@ -12,6 +12,7 @@ interface LogisticsProps {
 export const Logistics: React.FC<LogisticsProps> = ({ contracts, shipments, onUpdate }) => {
   const [selectedContractId, setSelectedContractId] = useState<string>(contracts[0]?.id || '');
   const [showAddTicket, setShowAddTicket] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   
   // Form for new ticket
   const [ticketData, setTicketData] = useState({
@@ -23,14 +24,16 @@ export const Logistics: React.FC<LogisticsProps> = ({ contracts, shipments, onUp
   const selectedContract = contracts.find(c => c.id === selectedContractId);
   const contractShipments = shipments.filter(s => s.contractId === selectedContractId);
 
-  const handleAddTicket = () => {
+  const handleAddTicket = async () => {
     if(!selectedContract) return;
     
+    setIsSubmitting(true);
+
     // Convert Kg to Bags (Standard 60kg)
     const bags = Math.floor(ticketData.weightKg / 60);
 
     const newShipment: Shipment = {
-        id: Math.random().toString(36),
+        id: Math.random().toString(36), // Temp ID
         contractId: selectedContract.id,
         plate: ticketData.plate,
         ticketNumber: ticketData.ticketNumber,
@@ -39,13 +42,14 @@ export const Logistics: React.FC<LogisticsProps> = ({ contracts, shipments, onUp
         date: new Date().toISOString()
     };
 
-    addShipment(newShipment);
-    onUpdate();
+    await addShipment(newShipment);
+    await onUpdate();
+    setIsSubmitting(false);
     setShowAddTicket(false);
     setTicketData({ plate: '', ticketNumber: '', weightKg: 0 });
   };
 
-  if (!selectedContract) return <div className="text-slate-500">Nenhum contrato disponível.</div>;
+  if (!selectedContract) return <div className="text-slate-500 p-8 text-center">Nenhum contrato disponível para logística.</div>;
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -160,7 +164,10 @@ export const Logistics: React.FC<LogisticsProps> = ({ contracts, shipments, onUp
                 </div>
                 <div className="mt-4 flex justify-end gap-2">
                     <button onClick={() => setShowAddTicket(false)} className="px-4 py-2 text-slate-500">Cancelar</button>
-                    <button onClick={handleAddTicket} className="px-6 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700">Confirmar Lançamento</button>
+                    <button onClick={handleAddTicket} disabled={isSubmitting} className="px-6 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50 flex items-center">
+                        {isSubmitting && <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin mr-2"></div>}
+                        Confirmar Lançamento
+                    </button>
                 </div>
             </div>
         )}

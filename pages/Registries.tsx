@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Plus, Search, Edit2, Trash2, Tractor, Building2, MapPin, X, Save, Eye, Wallet, FileText } from 'lucide-react';
 import { Producer, Buyer, Farm } from '../types';
@@ -11,6 +10,7 @@ export const Registries: React.FC = () => {
   // Data State
   const [producers, setProducers] = useState<Producer[]>([]);
   const [buyers, setBuyers] = useState<Buyer[]>([]);
+  const [loading, setLoading] = useState(false);
 
   // Modal State
   const [isProducerModalOpen, setIsProducerModalOpen] = useState(false);
@@ -34,9 +34,12 @@ export const Registries: React.FC = () => {
   // Temporary Farm State for the Form
   const [tempFarm, setTempFarm] = useState<Partial<Farm>>({ name: '', address: '' });
 
-  const refreshData = () => {
-    setProducers(getProducers());
-    setBuyers(getBuyers());
+  const refreshData = async () => {
+    setLoading(true);
+    const [p, b] = await Promise.all([getProducers(), getBuyers()]);
+    setProducers(p);
+    setBuyers(b);
+    setLoading(false);
   };
 
   useEffect(() => {
@@ -52,7 +55,7 @@ export const Registries: React.FC = () => {
 
   const handleNewProducer = () => {
     setProducerForm({
-        id: Math.random().toString(36).substr(2, 9),
+        id: Math.random().toString(36).substr(2, 9), // Temp ID for new
         farms: [],
         bankDetails: { bankName: '', agency: '', account: '' },
         funruralType: 'COMERCIALIZACAO'
@@ -60,20 +63,22 @@ export const Registries: React.FC = () => {
     setIsProducerModalOpen(true);
   };
 
-  const handleSaveProducer = () => {
+  const handleSaveProducer = async () => {
     if (!producerForm.name || !producerForm.doc) {
         alert("Preencha Nome e CPF/CNPJ");
         return;
     }
-    saveProducer(producerForm as Producer);
-    refreshData();
+    setLoading(true);
+    await saveProducer(producerForm as Producer);
+    await refreshData();
     setIsProducerModalOpen(false);
   };
 
-  const handleDeleteProducer = (id: string) => {
+  const handleDeleteProducer = async (id: string) => {
     if(confirm('Excluir este produtor?')) {
-        deleteProducer(id);
-        refreshData();
+        setLoading(true);
+        await deleteProducer(id);
+        await refreshData();
     }
   };
 
@@ -113,20 +118,22 @@ export const Registries: React.FC = () => {
     setIsBuyerModalOpen(true);
   };
 
-  const handleSaveBuyer = () => {
+  const handleSaveBuyer = async () => {
      if (!buyerForm.name || !buyerForm.doc) {
         alert("Preencha Nome e CNPJ");
         return;
     }
-    saveBuyer(buyerForm as Buyer);
-    refreshData();
+    setLoading(true);
+    await saveBuyer(buyerForm as Buyer);
+    await refreshData();
     setIsBuyerModalOpen(false);
   };
 
-  const handleDeleteBuyer = (id: string) => {
+  const handleDeleteBuyer = async (id: string) => {
     if(confirm('Excluir este comprador?')) {
-        deleteBuyer(id);
-        refreshData();
+        setLoading(true);
+        await deleteBuyer(id);
+        await refreshData();
     }
   };
 
@@ -169,13 +176,16 @@ export const Registries: React.FC = () => {
             </div>
             <button 
                 onClick={activeTab === 'producers' ? handleNewProducer : handleNewBuyer}
-                className={`flex items-center px-4 py-2 text-white rounded-lg shadow-sm transition-colors text-sm font-medium ${activeTab === 'producers' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-blue-600 hover:bg-blue-700'}`}
+                disabled={loading}
+                className={`flex items-center px-4 py-2 text-white rounded-lg shadow-sm transition-colors text-sm font-medium disabled:opacity-50 ${activeTab === 'producers' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-blue-600 hover:bg-blue-700'}`}
             >
                 <Plus className="w-4 h-4 mr-2" />
                 Novo
             </button>
         </div>
       </div>
+
+      {loading && <div className="text-center py-4 text-slate-400 text-sm animate-pulse">Sincronizando com banco de dados...</div>}
 
       {/* CONTENT: PRODUCERS */}
       {activeTab === 'producers' && (
@@ -445,7 +455,7 @@ export const Registries: React.FC = () => {
                 <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50 sticky top-0">
                     <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2">
                         <Tractor className="w-5 h-5 text-emerald-600" />
-                        {producerForm.id ? 'Editar Produtor' : 'Novo Produtor'}
+                        {producerForm.id?.length > 15 ? 'Editar Produtor' : 'Novo Produtor'}
                     </h3>
                     <button onClick={() => setIsProducerModalOpen(false)}><X className="w-5 h-5 text-slate-400" /></button>
                 </div>
@@ -546,7 +556,10 @@ export const Registries: React.FC = () => {
                 </div>
                 <div className="p-4 border-t bg-slate-50 flex justify-end gap-2">
                     <button onClick={() => setIsProducerModalOpen(false)} className="px-4 py-2 text-slate-600 hover:bg-slate-200 rounded">Cancelar</button>
-                    <button onClick={handleSaveProducer} className="px-4 py-2 bg-emerald-600 text-white rounded hover:bg-emerald-700 flex items-center gap-2"><Save className="w-4 h-4"/> Salvar</button>
+                    <button onClick={handleSaveProducer} disabled={loading} className="px-4 py-2 bg-emerald-600 text-white rounded hover:bg-emerald-700 flex items-center gap-2">
+                        {loading && <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>}
+                        <Save className="w-4 h-4"/> Salvar
+                    </button>
                 </div>
             </div>
           </div>
@@ -559,7 +572,7 @@ export const Registries: React.FC = () => {
                  <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50 rounded-t-xl">
                     <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2">
                         <Building2 className="w-5 h-5 text-blue-600" />
-                        {buyerForm.id ? 'Editar Comprador' : 'Novo Comprador'}
+                        {buyerForm.id?.length > 15 ? 'Editar Comprador' : 'Novo Comprador'}
                     </h3>
                     <button onClick={() => setIsBuyerModalOpen(false)}><X className="w-5 h-5 text-slate-400" /></button>
                 </div>
@@ -598,7 +611,10 @@ export const Registries: React.FC = () => {
                  </div>
                   <div className="p-4 border-t bg-slate-50 flex justify-end gap-2 rounded-b-xl">
                     <button onClick={() => setIsBuyerModalOpen(false)} className="px-4 py-2 text-slate-600 hover:bg-slate-200 rounded">Cancelar</button>
-                    <button onClick={handleSaveBuyer} className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center gap-2"><Save className="w-4 h-4"/> Salvar</button>
+                    <button onClick={handleSaveBuyer} disabled={loading} className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center gap-2">
+                        {loading && <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>}
+                        <Save className="w-4 h-4"/> Salvar
+                    </button>
                 </div>
             </div>
           </div>

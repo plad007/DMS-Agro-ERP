@@ -1,123 +1,79 @@
+import { supabase } from './supabase';
+import { Contract, Shipment, ContractStatus, PricingMode, MarketData, Producer, Buyer, Farm } from '../types';
 
-import { Contract, Shipment, ContractStatus, PricingMode, MarketData, Producer, Buyer } from '../types';
+// --- MAPPING HELPERS ---
+// Converte do Banco (snake_case) para App (camelCase)
+const mapProducerFromDB = (p: any): Producer => ({
+    id: p.id,
+    name: p.name,
+    doc: p.doc,
+    stateInsc: p.state_insc,
+    email: p.email,
+    region: p.region,
+    funruralType: p.funrural_type,
+    bankDetails: p.bank_details || {},
+    farms: p.farms ? p.farms.map((f: any) => ({
+        id: f.id,
+        name: f.name,
+        address: f.address
+    })) : []
+});
 
-// Mock Databases
-export const mockProducers: Producer[] = [
-    { 
-        id: 'p1', 
-        name: 'Fazenda Santa Rita', 
-        doc: '12.345.678/0001-90',
-        stateInsc: '123.456.789',
-        email: 'financeiro@santarita.com.br',
-        region: 'Sorriso - MT',
-        funruralType: 'COMERCIALIZACAO',
-        farms: [
-            { id: 'f1', name: 'Sede Santa Rita', address: 'Rodovia MT-242, Km 50' },
-            { id: 'f2', name: 'Retiro do Lago', address: 'Estrada Vicinal, Km 10' }
-        ],
-        bankDetails: {
-            bankName: 'Banco do Brasil',
-            agency: '1234-5',
-            account: '998877-X'
-        }
-    },
-    { 
-        id: 'p2', 
-        name: 'Grupo Bom Futuro', 
-        doc: '98.765.432/0001-10',
-        stateInsc: '987.654.321',
-        email: 'comercial@bomfuturo.com.br',
-        region: 'Cuiabá - MT',
-        funruralType: 'FOLHA',
-        farms: [
-             { id: 'f3', name: 'Fazenda Colorado', address: 'BR 163, Km 200' }
-        ],
-        bankDetails: {
-            bankName: 'Sicredi',
-            agency: '0810',
-            account: '11223-3'
-        }
-    }
-];
+const mapBuyerFromDB = (b: any): Buyer => ({
+    id: b.id,
+    name: b.name,
+    doc: b.doc,
+    stateInsc: b.state_insc,
+    address: b.address,
+    type: b.type
+});
 
-export const mockBuyers: Buyer[] = [
-    { 
-        id: 'b1', 
-        name: 'Cargill Agrícola', 
-        doc: '60.494.463/0001-05',
-        address: 'Av. Nações Unidas, 12345 - São Paulo/SP',
-        stateInsc: '123.123.123.111',
-        type: 'TRADING'
-    },
-    { 
-        id: 'b2', 
-        name: 'Granja Faria',
-        doc: '84.046.101/0001-93',
-        address: 'Rodovia Jorge Lacerda, Km 20 - Gaspar/SC',
-        stateInsc: '222.333.444.555',
-        type: 'MERCADO_INTERNO'
-    },
-    { 
-        id: 'b3', 
-        name: 'Amaggi Commodities',
-        doc: '77.777.777/0001-77',
-        address: 'Cuiabá - MT',
-        stateInsc: '777.888.999',
-        type: 'TRADING'
-    },
-    { 
-        id: 'b4', 
-        name: 'DMS Trading (Interno)',
-        doc: '33.082.718/0001-23',
-        address: 'Palmas - TO',
-        stateInsc: 'Isento',
-        type: 'TRADING'
-    }
-];
+const mapContractFromDB = (c: any): Contract => ({
+    id: c.id,
+    number: c.number,
+    product: c.product,
+    crop: c.crop,
+    sellerName: c.seller_name,
+    buyerName: c.buyer_name,
+    totalBags: c.total_bags,
+    totalTons: c.total_tons,
+    deliveredBags: c.delivered_bags,
+    freightType: c.freight_type,
+    pickupLocation: c.pickup_location,
+    shipmentStartDate: c.shipment_start_date,
+    shipmentEndDate: c.shipment_end_date,
+    observation: c.observation,
+    currency: c.currency,
+    exchangeRate: c.exchange_rate,
+    pricingMode: c.pricing_mode,
+    isFixed: c.is_fixed,
+    basePrice: c.base_price,
+    cbotComponent: c.cbot_component,
+    basisComponent: c.basis_component,
+    costComponent: c.cost_component,
+    finalPrice: c.final_price,
+    commissionPerBag: c.commission_per_bag,
+    paymentDate: c.payment_date,
+    commissionDueDate: c.commission_due_date,
+    status: c.status,
+    createdAt: c.created_at,
+    signatureData: c.signature_data
+});
 
-// Mock Initial Data
-let contracts: Contract[] = [
-  {
-    id: '1',
-    number: '1101S26', 
-    product: 'SOJA',
-    crop: '2026',
-    sellerName: 'Fazenda Santa Rita',
-    buyerName: 'Amaggi Commodities',
-    totalBags: 19200,
-    totalTons: 1152,
-    deliveredBags: 0,
-    freightType: 'FOB',
-    pickupLocation: 'Sede Santa Rita',
-    shipmentStartDate: '2026-03-01',
-    shipmentEndDate: '2026-03-31',
-    currency: 'BRL',
-    exchangeRate: 5.10,
-    pricingMode: PricingMode.FIXED,
-    isFixed: true,
-    basePrice: 104.00,
-    finalPrice: 104.00,
-    commissionPerBag: 0.50,
-    paymentDate: '2026-04-30',
-    commissionDueDate: '2026-05-01',
-    status: ContractStatus.SIGNED,
-    createdAt: '2026-02-12',
-    signatureData: {
-      signedAt: '2026-02-12T14:30:00Z',
-      ip: '192.168.1.1',
-      device: 'iPhone 13'
-    },
-    observation: 'Na hipótese de falta de produto na fazenda, descontar do preço da soja.\nCliente possui créditos de DPI no Site da Monsanto para apropriar no contrato e liberar o pagamento.'
-  }
-];
+const mapShipmentFromDB = (s: any): Shipment => ({
+    id: s.id,
+    contractId: s.contract_id,
+    plate: s.plate,
+    ticketNumber: s.ticket_number,
+    weightKg: s.weight_kg,
+    bagsCount: s.bags_count,
+    date: s.date
+});
 
-let shipments: Shipment[] = [];
-
-// Mutable Arrays for Runtime Updates
-let producers = [...mockProducers];
-let buyers = [...mockBuyers];
+// --- API FUNCTIONS ---
 
 export const getMarketData = (): MarketData => {
+  // Mock fixo por enquanto, poderia vir de outra tabela
   return {
     usd: 5.15,
     cbotSoy: 1180.50,
@@ -125,67 +81,201 @@ export const getMarketData = (): MarketData => {
   };
 };
 
-export const getContracts = () => [...contracts];
-export const getProducers = () => [...producers];
-export const getBuyers = () => [...buyers];
-
-// --- PRODUCER CRUD ---
-export const saveProducer = (producer: Producer) => {
-    const index = producers.findIndex(p => p.id === producer.id);
-    if (index >= 0) {
-        producers[index] = producer;
-    } else {
-        producers.push(producer);
+export const getProducers = async (): Promise<Producer[]> => {
+    const { data, error } = await supabase
+        .from('producers')
+        .select('*, farms(*)');
+    
+    if (error) {
+        console.error('Error fetching producers:', error);
+        return [];
     }
-    return producer;
+    return data.map(mapProducerFromDB);
 };
 
-export const deleteProducer = (id: string) => {
-    producers = producers.filter(p => p.id !== id);
-};
+export const getBuyers = async (): Promise<Buyer[]> => {
+    const { data, error } = await supabase
+        .from('buyers')
+        .select('*');
 
-// --- BUYER CRUD ---
-export const saveBuyer = (buyer: Buyer) => {
-    const index = buyers.findIndex(b => b.id === buyer.id);
-    if (index >= 0) {
-        buyers[index] = buyer;
-    } else {
-        buyers.push(buyer);
+    if (error) {
+        console.error('Error fetching buyers:', error);
+        return [];
     }
-    return buyer;
+    return data.map(mapBuyerFromDB);
 };
 
-export const deleteBuyer = (id: string) => {
-    buyers = buyers.filter(b => b.id !== id);
+export const getContracts = async (): Promise<Contract[]> => {
+    const { data, error } = await supabase
+        .from('contracts')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+    if (error) {
+        console.error('Error fetching contracts:', error);
+        return [];
+    }
+    return data.map(mapContractFromDB);
 };
 
-// --- CONTRACT CRUD ---
-export const saveContract = (contract: Contract) => {
-  const index = contracts.findIndex(c => c.id === contract.id);
-  if (index >= 0) {
-    contracts[index] = contract;
-  } else {
-    contracts.push(contract);
-  }
-  return contract;
+export const getShipments = async (contractId?: string): Promise<Shipment[]> => {
+    let query = supabase.from('shipments').select('*').order('date', { ascending: false });
+    
+    if (contractId) {
+        query = query.eq('contract_id', contractId);
+    }
+
+    const { data, error } = await query;
+
+    if (error) {
+        console.error('Error fetching shipments:', error);
+        return [];
+    }
+    return data.map(mapShipmentFromDB);
 };
 
-export const getShipments = (contractId?: string) => {
-  if (contractId) return shipments.filter(s => s.contractId === contractId);
-  return shipments;
+// --- CRUD OPERATIONS ---
+
+export const saveProducer = async (producer: Producer): Promise<Producer | null> => {
+    // 1. Save Producer Info
+    const dbProducer = {
+        name: producer.name,
+        doc: producer.doc,
+        state_insc: producer.stateInsc,
+        email: producer.email,
+        region: producer.region,
+        funrural_type: producer.funruralType,
+        bank_details: producer.bankDetails
+    };
+
+    let producerId = producer.id;
+    let result = null;
+
+    // Check if ID is a temp ID (generated by Math.random in frontend usually lacks hyphens or is short)
+    // UUIDs are 36 chars. If it's a new producer from frontend, we might just Upsert based on DOC or let Supabase generate ID.
+    // Melhor abordagem: Se tem ID válido (UUID), update. Se não, insert.
+    // Como o frontend gera ID aleatorio, vamos ignorar o ID do frontend na criação e deixar o banco criar um UUID real.
+    
+    const isNew = producer.id.length < 15; // Simple check for temp ID
+
+    if (isNew) {
+        const { data, error } = await supabase.from('producers').insert(dbProducer).select().single();
+        if (error) throw error;
+        result = data;
+        producerId = data.id;
+    } else {
+        const { data, error } = await supabase.from('producers').update(dbProducer).eq('id', producerId).select().single();
+        if (error) throw error;
+        result = data;
+    }
+
+    // 2. Save Farms (Sync Strategy: Delete all not in list? Or Upsert?)
+    // Simplest for now: Upsert farms.
+    if (producer.farms && producer.farms.length > 0) {
+        const farmsToUpsert = producer.farms.map(f => ({
+            id: f.id.length < 15 ? undefined : f.id, // Let DB generate ID if temp
+            producer_id: producerId,
+            name: f.name,
+            address: f.address
+        }));
+        
+        const { error: farmsError } = await supabase.from('farms').upsert(farmsToUpsert);
+        if (farmsError) console.error("Error saving farms", farmsError);
+    }
+    
+    // Check deleted farms? (For complexity, skipping deletion of removed farms in this iteration unless critical)
+
+    return mapProducerFromDB(result); // Re-fetch needed to get full object usually, but returning basic mapped result
 };
 
-export const addShipment = (shipment: Shipment) => {
-  shipments.push(shipment);
-  const contract = contracts.find(c => c.id === shipment.contractId);
-  if (contract) {
-    contract.deliveredBags += shipment.bagsCount;
-  }
-  return shipment;
+export const deleteProducer = async (id: string) => {
+    await supabase.from('producers').delete().eq('id', id);
 };
 
-export const generateContractNumber = (product: string, crop: string): string => {
-  // Logic: 100 (Prefix) + 1 (Start Sequence) + [Letter] + [Year]
+export const saveBuyer = async (buyer: Buyer) => {
+    const dbBuyer = {
+        name: buyer.name,
+        doc: buyer.doc,
+        state_insc: buyer.stateInsc,
+        address: buyer.address,
+        type: buyer.type
+    };
+
+    const isNew = buyer.id.length < 15;
+
+    if (isNew) {
+        await supabase.from('buyers').insert(dbBuyer);
+    } else {
+        await supabase.from('buyers').update(dbBuyer).eq('id', buyer.id);
+    }
+};
+
+export const deleteBuyer = async (id: string) => {
+    await supabase.from('buyers').delete().eq('id', id);
+};
+
+export const saveContract = async (contract: Contract) => {
+    const dbContract = {
+        number: contract.number,
+        product: contract.product,
+        crop: contract.crop,
+        seller_name: contract.sellerName,
+        buyer_name: contract.buyerName,
+        total_bags: contract.totalBags,
+        total_tons: contract.totalTons,
+        delivered_bags: contract.deliveredBags,
+        freight_type: contract.freightType,
+        pickup_location: contract.pickupLocation,
+        shipment_start_date: contract.shipmentStartDate,
+        shipment_end_date: contract.shipmentEndDate,
+        observation: contract.observation,
+        currency: contract.currency,
+        exchange_rate: contract.exchangeRate,
+        pricing_mode: contract.pricingMode,
+        is_fixed: contract.isFixed,
+        base_price: contract.basePrice,
+        cbot_component: contract.cbotComponent,
+        basis_component: contract.basisComponent,
+        cost_component: contract.costComponent,
+        final_price: contract.finalPrice,
+        commission_per_bag: contract.commissionPerBag,
+        payment_date: contract.paymentDate,
+        commission_due_date: contract.commissionDueDate,
+        status: contract.status,
+        signature_data: contract.signatureData
+    };
+
+    const isNew = contract.id.length < 15;
+
+    if (isNew) {
+        await supabase.from('contracts').insert(dbContract);
+    } else {
+        await supabase.from('contracts').update(dbContract).eq('id', contract.id);
+    }
+};
+
+export const addShipment = async (shipment: Shipment) => {
+    const dbShipment = {
+        contract_id: shipment.contractId,
+        plate: shipment.plate,
+        ticket_number: shipment.ticketNumber,
+        weight_kg: shipment.weightKg,
+        bags_count: shipment.bagsCount,
+        date: shipment.date
+    };
+    
+    await supabase.from('shipments').insert(dbShipment);
+
+    // Trigger update on contract delivered amount
+    // In a real app, a Database Trigger is better. Here we do it via code.
+    const { data: contract } = await supabase.from('contracts').select('delivered_bags').eq('id', shipment.contractId).single();
+    if (contract) {
+        const newTotal = (Number(contract.delivered_bags) || 0) + shipment.bagsCount;
+        await supabase.from('contracts').update({ delivered_bags: newTotal }).eq('id', shipment.contractId);
+    }
+};
+
+export const generateContractNumber = async (product: string, crop: string): Promise<string> => {
   const letter = product === 'SOJA' ? 'S' : product === 'MILHO' ? 'M' : 'T';
   const cleanCrop = crop.trim();
   let yearSuffix = '00';
@@ -196,12 +286,15 @@ export const generateContractNumber = (product: string, crop: string): string =>
     yearSuffix = cleanCrop.slice(-2); 
   }
 
-  const existingCount = contracts.filter(c => 
-    c.product === product && 
-    c.crop === crop
-  ).length;
+  // Count existing contracts for this product/crop to generate sequence
+  // Note: This is prone to race conditions in high volume, but ok for basic ERP
+  const { count } = await supabase
+    .from('contracts')
+    .select('*', { count: 'exact', head: true })
+    .eq('product', product)
+    .eq('crop', crop);
 
-  const seq = 1001 + existingCount;
+  const seq = 1001 + (count || 0);
   
   return `${seq}${letter}${yearSuffix}`;
 };
