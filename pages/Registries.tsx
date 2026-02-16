@@ -3,6 +3,16 @@ import { Plus, Search, Edit2, Trash2, Tractor, Building2, MapPin, X, Save, Eye, 
 import { Producer, Buyer, Farm } from '../types';
 import { getProducers, getBuyers, saveProducer, saveBuyer, deleteProducer, deleteBuyer } from '../services/mockService';
 
+// Helper to display friendly names
+const getFunruralLabel = (type: string) => {
+    switch (type) {
+        case 'FOLHA': return 'Em Folha';
+        case 'COMERCIALIZACAO': return 'Comercialização';
+        case 'PJ_ISENTO': return 'PJ (Isento)';
+        default: return type;
+    }
+};
+
 export const Registries: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'producers' | 'buyers'>('producers');
   const [searchTerm, setSearchTerm] = useState('');
@@ -215,7 +225,9 @@ export const Registries: React.FC = () => {
                                     {p.farms?.length || 0} locais
                                 </span>
                             </td>
-                            <td className="px-6 py-4 text-xs font-mono">{p.funruralType}</td>
+                            <td className="px-6 py-4 text-xs font-mono font-bold text-slate-600">
+                                {getFunruralLabel(p.funruralType)}
+                            </td>
                             <td className="px-6 py-4 text-right flex justify-end gap-2">
                                 <button onClick={() => setViewingProducer(p)} className="text-slate-400 hover:text-blue-600" title="Ver Detalhes"><Eye className="w-4 h-4" /></button>
                                 <button onClick={() => handleEditProducer(p)} className="text-slate-400 hover:text-emerald-600" title="Editar"><Edit2 className="w-4 h-4" /></button>
@@ -315,7 +327,7 @@ export const Registries: React.FC = () => {
                                 <div className="flex justify-between pt-1">
                                     <span className="text-slate-500 text-sm">Funrural</span>
                                     <span className="font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded text-xs">
-                                        {viewingProducer.funruralType}
+                                        {getFunruralLabel(viewingProducer.funruralType)}
                                     </span>
                                 </div>
                             </div>
@@ -425,6 +437,7 @@ export const Registries: React.FC = () => {
                             >
                                 <option value="COMERCIALIZACAO">Comercialização</option>
                                 <option value="FOLHA">Em Folha</option>
+                                <option value="PJ_ISENTO">PJ (Isento)</option>
                             </select>
                         </div>
                     </div>

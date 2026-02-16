@@ -99,7 +99,7 @@ export interface Producer {
     region: string; // REGIÃO
     farms: Farm[]; // Lista de fazendas
     bankDetails: BankAccount;
-    funruralType: 'FOLHA' | 'COMERCIALIZACAO'; // TIPO DE FUNRURAL
+    funruralType: 'FOLHA' | 'COMERCIALIZACAO' | 'PJ_ISENTO'; // TIPO DE FUNRURAL ATUALIZADO
 }
 
 export interface Buyer {

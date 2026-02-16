@@ -210,7 +210,7 @@ export const Settings: React.FC = () => {
                     <ul className="list-disc pl-5 space-y-1">
                         <li>Utilize a separação por vírgulas (<code>,</code>).</li>
                         <li>Não use pontos de milhar em números, apenas ponto para decimais (Ex: <code>1200.50</code>).</li>
-                        <li>As datas devem estar no formato <code>YYYY-MM-DD</code>.</li>
+                        <li>Para <code>funrural_type</code>, utilize os códigos: <code>COMERCIALIZACAO</code>, <code>FOLHA</code> ou <code>PJ_ISENTO</code>.</li>
                         <li><strong>Importante:</strong> Importe os Produtores (Passo 1) antes de importar as Fazendas (Passo 2).</li>
                     </ul>
                 </div>
