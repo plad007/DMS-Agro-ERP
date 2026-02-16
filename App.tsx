@@ -4,6 +4,7 @@ import { Dashboard } from './pages/Dashboard';
 import { Contracts } from './pages/Contracts';
 import { Logistics } from './pages/Logistics';
 import { Registries } from './pages/Registries';
+import { Settings } from './pages/Settings';
 import { getContracts, getMarketData, getShipments } from './services/mockService';
 import { Contract, Shipment, MarketData } from './types';
 
@@ -55,6 +56,8 @@ export default function App() {
         return <Logistics contracts={contracts} shipments={shipments} onUpdate={refreshData} />;
       case 'registries':
         return <Registries />;
+      case 'settings':
+        return <Settings />;
       default:
         return <div className="p-10 text-center text-slate-500">Módulo em desenvolvimento...</div>;
     }
