@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Download, Upload, Database, AlertCircle, CheckCircle, FileSpreadsheet, MapPin } from 'lucide-react';
+import { Download, Upload, Database, AlertCircle, CheckCircle, FileSpreadsheet, MapPin, Settings2 } from 'lucide-react';
 import { bulkInsert, bulkInsertFarms, bulkInsertProducers } from '../services/mockService';
 
 const CSV_TEMPLATES = {
@@ -12,6 +12,9 @@ const CSV_TEMPLATES = {
 export const Settings: React.FC = () => {
     const [importStatus, setImportStatus] = useState<{msg: string, type: 'success' | 'error' | ''}>({msg: '', type: ''});
     const [loading, setLoading] = useState(false);
+    
+    // Novo Estado para Codificação
+    const [fileEncoding, setFileEncoding] = useState<'UTF-8' | 'ISO-8859-1'>('ISO-8859-1');
 
     const handleDownloadTemplate = (type: keyof typeof CSV_TEMPLATES) => {
         const csvContent = "data:text/csv;charset=utf-8," + encodeURIComponent(CSV_TEMPLATES[type]);
@@ -108,6 +111,7 @@ export const Settings: React.FC = () => {
         setImportStatus({msg: 'Lendo arquivo...', type: ''});
 
         const reader = new FileReader();
+        
         reader.onload = async (e) => {
             try {
                 const text = e.target?.result as string;
@@ -144,19 +148,37 @@ export const Settings: React.FC = () => {
                 setLoading(false);
             }
         };
-        reader.readAsText(file);
+
+        // CRITICAL FIX: Read with specific encoding to handle accents
+        reader.readAsText(file, fileEncoding);
     };
 
     return (
         <div className="space-y-6">
             <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-                <div className="flex items-center gap-3 mb-6">
-                    <div className="p-2 bg-slate-100 rounded-lg">
-                        <Database className="w-6 h-6 text-slate-700" />
+                <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+                    <div className="flex items-center gap-3">
+                        <div className="p-2 bg-slate-100 rounded-lg">
+                            <Database className="w-6 h-6 text-slate-700" />
+                        </div>
+                        <div>
+                            <h2 className="text-xl font-bold text-slate-800">Gerenciamento de Dados</h2>
+                            <p className="text-slate-500 text-sm">Importação e Exportação em lote via CSV</p>
+                        </div>
                     </div>
-                    <div>
-                        <h2 className="text-xl font-bold text-slate-800">Gerenciamento de Dados</h2>
-                        <p className="text-slate-500 text-sm">Importação e Exportação em lote via CSV</p>
+
+                    {/* Encoding Selector */}
+                    <div className="flex items-center gap-2 bg-slate-50 p-2 rounded-lg border border-slate-200">
+                        <Settings2 className="w-4 h-4 text-slate-500" />
+                        <label className="text-xs font-bold text-slate-600">Codificação:</label>
+                        <select 
+                            value={fileEncoding}
+                            onChange={(e) => setFileEncoding(e.target.value as any)}
+                            className="bg-white border border-slate-300 rounded text-xs py-1 px-2 outline-none focus:border-emerald-500"
+                        >
+                            <option value="ISO-8859-1">Excel / Windows (ISO-8859-1)</option>
+                            <option value="UTF-8">Padrão Web (UTF-8)</option>
+                        </select>
                     </div>
                 </div>
 
@@ -260,9 +282,9 @@ export const Settings: React.FC = () => {
                 <div className="mt-8 p-4 bg-yellow-50 rounded-lg border border-yellow-100 text-sm text-yellow-800">
                     <h4 className="font-bold flex items-center gap-2 mb-2"><AlertCircle className="w-4 h-4"/> Dicas para evitar erros</h4>
                     <ul className="list-disc pl-5 space-y-1">
-                        <li>Se o endereço contiver vírgulas (ex: "Rua A, 123"), utilize <strong>aspas duplas</strong> em volta dele.</li>
-                        <li>Os tipos de Funrural válidos são: <strong>FOLHA</strong>, <strong>COMERCIALIZACAO</strong> e <strong>PJ_ISENTO</strong>. O sistema tenta corrigir automaticamente se estiver diferente.</li>
-                        <li>Não use pontos de milhar em números, apenas ponto para decimais.</li>
+                        <li>Se os acentos aparecerem errados, mude a opção <strong>Codificação</strong> lá em cima para <strong>Excel / Windows</strong>.</li>
+                        <li>Se o endereço contiver vírgulas (ex: "Rua A, 123"), o Excel geralmente coloca aspas automaticamente. Se der erro, verifique isso.</li>
+                        <li>Não use pontos de milhar em números, apenas ponto para decimais (Ex: 1200.50).</li>
                     </ul>
                 </div>
 

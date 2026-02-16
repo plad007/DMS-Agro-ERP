@@ -296,14 +296,21 @@ export const bulkInsert = async (table: string, data: any[]) => {
 
 // Specialized Producer Insert (Handles Bank Details JSON)
 export const bulkInsertProducers = async (data: any[]) => {
-    const formattedData = data.map(row => {
-        // Normalização do Tipo de Funrural
-        let fType = row.funrural_type ? row.funrural_type.toString().trim().toUpperCase() : null;
+    // Normalizer function: Removes accents and forces Uppercase
+    // Ex: "Comercialização" -> "COMERCIALIZACAO"
+    const normalize = (str: string) => str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
 
-        if (fType === 'FOLHA' || fType === 'EM FOLHA' || fType === 'FOLHA.') fType = 'FOLHA';
-        else if (fType === 'PJ_ISENTO' || fType === 'PJ (ISENTO)' || fType === 'PJ' || fType === 'ISENTO') fType = 'PJ_ISENTO';
-        else if (fType === 'COMERCIALIZACAO' || fType === 'COMERCIALIZAÇÃO') fType = 'COMERCIALIZACAO';
-        else fType = null; // Se não reconhecer (ex: lixo de coluna deslocada), envia NULL para não travar o banco
+    const formattedData = data.map(row => {
+        // Safe robust normalization
+        const fTypeRaw = row.funrural_type ? normalize(row.funrural_type.toString()) : '';
+        let fType = null;
+
+        // "Fuzzy" matching
+        if (fTypeRaw.includes('FOLHA')) fType = 'FOLHA';
+        else if (fTypeRaw.includes('PJ') || fTypeRaw.includes('ISENTO')) fType = 'PJ_ISENTO';
+        else if (fTypeRaw.includes('COMERCIALIZA')) fType = 'COMERCIALIZACAO';
+        // Se não der match, envia null para não quebrar a importação, 
+        // mas o usuário verá o campo vazio no sistema.
 
         return {
             name: row.name,
