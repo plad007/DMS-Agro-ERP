@@ -1,4 +1,3 @@
-
 import React, { ReactNode } from 'react';
 import { LayoutDashboard, FileText, Truck, LogOut, Settings, Sprout, Users } from 'lucide-react';
 
@@ -17,17 +16,27 @@ export const Layout: React.FC<LayoutProps> = ({ children, activePage, onNavigate
     { id: 'settings', label: 'Configurações', icon: Settings },
   ];
 
+  // LOGO DMS AGRO
+  const LOGO_URL = "https://i.postimg.cc/8CmMzM9c/LOGO-DMS-SF.png"; 
+
   return (
     <div className="flex h-screen bg-slate-50 text-slate-800">
       {/* Sidebar */}
       <aside className="w-64 bg-emerald-900 text-white flex flex-col shadow-xl">
-        <div className="p-6 flex items-center gap-3 border-b border-emerald-800">
-          <div className="bg-white p-1.5 rounded-lg">
-            <Sprout className="w-6 h-6 text-emerald-700" />
-          </div>
-          <div>
-            <h1 className="font-bold text-lg tracking-tight">DMS Agro</h1>
-            <p className="text-xs text-emerald-300">Trading & Corretagem</p>
+        <div className="p-6 flex items-center justify-center border-b border-emerald-800">
+          {/* Logo Container - Centralizado e expandido para melhor visibilidade sem o texto */}
+          <div className="bg-white p-3 rounded-xl w-full h-20 flex items-center justify-center shadow-lg">
+             <img 
+                src={LOGO_URL} 
+                alt="Logo" 
+                className="max-w-full max-h-full object-contain"
+                onError={(e) => {
+                    // Se o link quebrar, mostra o ícone padrão
+                    e.currentTarget.style.display = 'none';
+                    e.currentTarget.nextElementSibling?.classList.remove('hidden');
+                }}
+             />
+             <Sprout className="w-10 h-10 text-emerald-700 hidden" />
           </div>
         </div>
 

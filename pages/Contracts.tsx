@@ -10,6 +10,10 @@ interface ContractsProps {
   onUpdate: () => void;
 }
 
+// LOGO DMS AGRO PARA IMPRESSÃO
+const LOGO_URL = "https://i.postimg.cc/8CmMzM9c/LOGO-DMS-SF.png"; 
+
+
 const MONTHS = [
   'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
   'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
@@ -396,18 +400,24 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
              <div className="bg-white w-full max-w-[210mm] min-h-[297mm] p-[10mm] mx-auto text-black font-sans text-[11px] leading-tight mt-16 print:mt-0 shadow-2xl print:shadow-none">
                  <div className="border border-black">
                     {/* Header */}
-                    <div className="flex justify-between items-center p-2 border-b border-black">
-                        <div className="flex items-center gap-2">
-                            <div className="text-emerald-800">
-                                <Sprout className="w-10 h-10" />
-                            </div>
-                            <div>
-                                <h1 className="text-2xl font-black text-emerald-900 leading-none">DMS AGRO</h1>
-                                <p className="text-[9px] text-emerald-600 font-bold tracking-widest uppercase">Comércio de Cereais</p>
-                                <p className="text-[10px] font-bold mt-1">CNPJ: 33.082.718/0001-23</p>
-                            </div>
+                    <div className="flex justify-between items-center p-2 border-b border-black h-28">
+                        <div className="text-emerald-800 h-full flex items-center pl-2">
+                            {/* LOGO IMAGE SUPPORT - Standalone since text is removed */}
+                            <img 
+                                src={LOGO_URL} 
+                                alt="DMS Agro" 
+                                className="h-24 w-auto object-contain"
+                                onError={(e) => {
+                                    // Fallback to Sprout icon if image not found
+                                    e.currentTarget.style.display = 'none';
+                                    e.currentTarget.nextElementSibling?.classList.remove('hidden');
+                                }}
+                            />
+                            <Sprout className="w-16 h-16 hidden" />
                         </div>
-                        <h2 className="text-xl font-bold uppercase">Confirmação de Negócio</h2>
+                        <div className="text-right">
+                            <h2 className="text-xl font-bold uppercase border-2 border-black px-2 py-1 inline-block">Confirmação de Negócio</h2>
+                        </div>
                     </div>
 
                     {/* Green Info Bar */}
@@ -545,11 +555,22 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
                     <div className="border-t border-black p-2 flex items-center justify-between">
                         <div>
                             <h3 className="font-bold text-xs uppercase">DMS AGRO COMÉRCIO DE CEREAIS</h3>
-                            <p className="text-[9px]">WhatsApp: 63 99979 8113 | 63 98113 3000</p>
+                            <p className="text-[10px] font-bold mt-0.5">CNPJ: 33.082.718/0001-23</p>
+                            <p className="text-[9px] mt-1">WhatsApp: 63 99979 8113 | 63 98113 3000</p>
                             <p className="text-[9px]">311 Sul. Orla 14 Graciosa. Lt 17 . Al 12 . Sala 1. CEP 77026 070 . Palmas TO</p>
                         </div>
                         <div className="text-emerald-800">
-                                <Sprout className="w-8 h-8" />
+                                {/* LOGO IMAGE SUPPORT FOR FOOTER */}
+                                <img 
+                                    src={LOGO_URL} 
+                                    alt="DMS Agro" 
+                                    className="h-8 w-auto object-contain"
+                                    onError={(e) => {
+                                        e.currentTarget.style.display = 'none';
+                                        e.currentTarget.nextElementSibling?.classList.remove('hidden');
+                                    }}
+                                />
+                                <Sprout className="w-8 h-8 hidden" />
                                 <span className="font-black text-sm block -mt-1">DMS AGRO</span>
                         </div>
                     </div>
@@ -799,7 +820,17 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
                         <div className="flex justify-between items-start border-b-2 border-emerald-800 pb-4 mb-6">
                             <div className="flex items-center gap-3">
                                 <div className="text-emerald-800">
-                                    <Sprout className="w-12 h-12" />
+                                    {/* LOGO IMAGE SUPPORT FOR REPORT */}
+                                    <img 
+                                        src={LOGO_URL} 
+                                        alt="DMS Agro" 
+                                        className="h-16 w-auto object-contain"
+                                        onError={(e) => {
+                                            e.currentTarget.style.display = 'none';
+                                            e.currentTarget.nextElementSibling?.classList.remove('hidden');
+                                        }}
+                                    />
+                                    <Sprout className="w-12 h-12 hidden" />
                                 </div>
                                 <div>
                                     <h1 className="text-2xl font-black text-emerald-900 leading-none">DMS AGRO</h1>
