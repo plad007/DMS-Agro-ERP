@@ -296,22 +296,32 @@ export const bulkInsert = async (table: string, data: any[]) => {
 
 // Specialized Producer Insert (Handles Bank Details JSON)
 export const bulkInsertProducers = async (data: any[]) => {
-    const formattedData = data.map(row => ({
-        name: row.name,
-        doc: row.doc,
-        state_insc: row.state_insc,
-        email: row.email,
-        region: row.region,
-        funrural_type: row.funrural_type,
-        // Compress bank columns into single JSONB object
-        bank_details: {
-            bankName: row.bank_name || '',
-            agency: row.agency || '',
-            account: row.account || '',
-            holder: row.holder || row.name, // Default to producer name if empty
-            holderDoc: row.holder_doc || row.doc // Default to producer doc if empty
-        }
-    }));
+    const formattedData = data.map(row => {
+        // Normalização do Tipo de Funrural
+        let fType = row.funrural_type ? row.funrural_type.toString().trim().toUpperCase() : null;
+
+        if (fType === 'FOLHA' || fType === 'EM FOLHA' || fType === 'FOLHA.') fType = 'FOLHA';
+        else if (fType === 'PJ_ISENTO' || fType === 'PJ (ISENTO)' || fType === 'PJ' || fType === 'ISENTO') fType = 'PJ_ISENTO';
+        else if (fType === 'COMERCIALIZACAO' || fType === 'COMERCIALIZAÇÃO') fType = 'COMERCIALIZACAO';
+        else fType = null; // Se não reconhecer (ex: lixo de coluna deslocada), envia NULL para não travar o banco
+
+        return {
+            name: row.name,
+            doc: row.doc,
+            state_insc: row.state_insc,
+            email: row.email,
+            region: row.region,
+            funrural_type: fType,
+            // Compress bank columns into single JSONB object
+            bank_details: {
+                bankName: row.bank_name || '',
+                agency: row.agency || '',
+                account: row.account || '',
+                holder: row.holder || row.name, // Default to producer name if empty
+                holderDoc: row.holder_doc || row.doc // Default to producer doc if empty
+            }
+        };
+    });
 
     const { error } = await supabase.from('producers').insert(formattedData);
     if (error) throw error;

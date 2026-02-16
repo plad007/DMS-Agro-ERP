@@ -3,7 +3,7 @@ import { Download, Upload, Database, AlertCircle, CheckCircle, FileSpreadsheet, 
 import { bulkInsert, bulkInsertFarms, bulkInsertProducers } from '../services/mockService';
 
 const CSV_TEMPLATES = {
-    producers: `name,doc,state_insc,region,email,funrural_type,bank_name,agency,account\nJoão Silva,111.222.333-44,12345678,Pedro Afonso,joao@email.com,COMERCIALIZACAO,Banco do Brasil,1234-5,99999-X`,
+    producers: `name,doc,state_insc,region,email,funrural_type,bank_name,agency,account\nJoão Silva,111.222.333-44,12345678,"Lot. São Silvestre, N 45",joao@email.com,COMERCIALIZACAO,Banco do Brasil,1234-5,99999-X`,
     farms: `producer_doc,name,address\n111.222.333-44,Fazenda Colorado,Rodovia TO-050 km 10`,
     buyers: `name,doc,state_insc,address,type\nCargill Agricola,12.345.678/0001-90,99988877,Av Industrial 1000,TRADING`,
     contracts: `number,product,crop,seller_name,buyer_name,total_bags,total_tons,final_price,pickup_location,status,freight_type\n1001S24,SOJA,23/24,João Silva,Cargill Agricola,5000,300,120.50,Fazenda Esperança,Assinado,FOB`,
@@ -23,17 +23,53 @@ export const Settings: React.FC = () => {
         document.body.removeChild(link);
     };
 
+    // Parser CSV Robusto que suporta aspas (RFC 4180 básico)
+    const parseCSVLine = (line: string): string[] => {
+        const values: string[] = [];
+        let current = '';
+        let inQuote = false;
+        
+        for (let i = 0; i < line.length; i++) {
+            const char = line[i];
+            
+            if (char === '"') {
+                if (inQuote && line[i + 1] === '"') {
+                    // Aspas duplas escapadas ("")
+                    current += '"';
+                    i++;
+                } else {
+                    // Alterna estado de citação
+                    inQuote = !inQuote;
+                }
+            } else if (char === ',' && !inQuote) {
+                // Fim do campo
+                values.push(current.trim());
+                current = '';
+            } else {
+                current += char;
+            }
+        }
+        values.push(current.trim());
+        return values;
+    };
+
     const parseCSV = (text: string): any[] => {
         const rows = text.trim().split('\n');
-        const headers = rows[0].split(',').map(h => h.trim());
+        if (rows.length < 2) return [];
+
+        // Parse headers using the robust parser
+        const headers = parseCSVLine(rows[0]).map(h => h.trim());
         const data = [];
 
         for (let i = 1; i < rows.length; i++) {
             const row = rows[i].trim();
             if (!row) continue;
             
-            // Basic CSV split (Note: doesn't handle commas inside quotes properly, simpler for now)
-            const values = row.split(',').map(v => v.trim());
+            const values = parseCSVLine(row);
+            
+            // Skip rows that look completely broken/empty
+            if (values.length < 2) continue;
+
             const obj: any = {};
             
             headers.forEach((header, index) => {
@@ -45,10 +81,18 @@ export const Settings: React.FC = () => {
                     header !== 'producer_doc' && 
                     header !== 'number' &&
                     header !== 'account' &&
-                    header !== 'agency'
+                    header !== 'agency' &&
+                    header !== 'state_insc' &&
+                    header !== 'ticket_number'
                 ) {
                      val = Number(val);
                 }
+                
+                // Remove potential quotes remaining if format was weird
+                if (typeof val === 'string' && val.startsWith('"') && val.endsWith('"')) {
+                    val = val.slice(1, -1);
+                }
+
                 obj[header] = val;
             });
             data.push(obj);
@@ -87,7 +131,15 @@ export const Settings: React.FC = () => {
                 event.target.value = '';
             } catch (error: any) {
                 console.error(error);
-                setImportStatus({msg: `Erro na importação: ${error.message || 'Verifique o formato do CSV'}`, type: 'error'});
+                let errorMsg = error.message || 'Erro desconhecido';
+                
+                if (errorMsg.includes('violates check constraint')) {
+                     errorMsg = "Erro de validação: Um dos campos (provavelmente Funrural ou Tipo) contém um valor inválido.";
+                } else if (errorMsg.includes('violates unique constraint')) {
+                     errorMsg = "Erro de duplicidade: CPF/CNPJ ou Contrato já cadastrado.";
+                }
+
+                setImportStatus({msg: `Falha: ${errorMsg}`, type: 'error'});
             } finally {
                 setLoading(false);
             }
@@ -206,12 +258,11 @@ export const Settings: React.FC = () => {
                 </div>
 
                 <div className="mt-8 p-4 bg-yellow-50 rounded-lg border border-yellow-100 text-sm text-yellow-800">
-                    <h4 className="font-bold flex items-center gap-2 mb-2"><AlertCircle className="w-4 h-4"/> Atenção ao formato CSV</h4>
+                    <h4 className="font-bold flex items-center gap-2 mb-2"><AlertCircle className="w-4 h-4"/> Dicas para evitar erros</h4>
                     <ul className="list-disc pl-5 space-y-1">
-                        <li>Utilize a separação por vírgulas (<code>,</code>).</li>
-                        <li>Não use pontos de milhar em números, apenas ponto para decimais (Ex: <code>1200.50</code>).</li>
-                        <li>Para <code>funrural_type</code>, utilize os códigos: <code>COMERCIALIZACAO</code>, <code>FOLHA</code> ou <code>PJ_ISENTO</code>.</li>
-                        <li><strong>Importante:</strong> Importe os Produtores (Passo 1) antes de importar as Fazendas (Passo 2).</li>
+                        <li>Se o endereço contiver vírgulas (ex: "Rua A, 123"), utilize <strong>aspas duplas</strong> em volta dele.</li>
+                        <li>Os tipos de Funrural válidos são: <strong>FOLHA</strong>, <strong>COMERCIALIZACAO</strong> e <strong>PJ_ISENTO</strong>. O sistema tenta corrigir automaticamente se estiver diferente.</li>
+                        <li>Não use pontos de milhar em números, apenas ponto para decimais.</li>
                     </ul>
                 </div>
 
