@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { Download, Upload, Database, AlertCircle, CheckCircle, FileSpreadsheet } from 'lucide-react';
-import { bulkInsert } from '../services/mockService';
+import { Download, Upload, Database, AlertCircle, CheckCircle, FileSpreadsheet, MapPin } from 'lucide-react';
+import { bulkInsert, bulkInsertFarms } from '../services/mockService';
 
 const CSV_TEMPLATES = {
     producers: `name,doc,state_insc,region,email,funrural_type\nJoão Silva,111.222.333-44,12345678,Pedro Afonso,joao@email.com,COMERCIALIZACAO`,
+    farms: `producer_doc,name,address\n111.222.333-44,Fazenda Colorado,Rodovia TO-050 km 10`,
     buyers: `name,doc,state_insc,address,type\nCargill Agricola,12.345.678/0001-90,99988877,Av Industrial 1000,TRADING`,
     contracts: `number,product,crop,seller_name,buyer_name,total_bags,total_tons,final_price,pickup_location,status,freight_type\n1001S24,SOJA,23/24,João Silva,Cargill Agricola,5000,300,120.50,Fazenda Esperança,Assinado,FOB`,
 };
@@ -39,7 +40,7 @@ export const Settings: React.FC = () => {
                 let val: string | number | boolean = values[index];
                 
                 // Simple type conversion
-                if (val && !isNaN(Number(val)) && header !== 'doc' && header !== 'number') {
+                if (val && !isNaN(Number(val)) && header !== 'doc' && header !== 'producer_doc' && header !== 'number') {
                      val = Number(val);
                 }
                 obj[header] = val;
@@ -64,9 +65,15 @@ export const Settings: React.FC = () => {
                 
                 if (data.length === 0) throw new Error("Arquivo vazio ou formato inválido");
 
-                await bulkInsert(table, data);
+                if (table === 'farms') {
+                    // Logic specific for farms (lookup producer ID)
+                    await bulkInsertFarms(data);
+                } else {
+                    // Generic Logic
+                    await bulkInsert(table, data);
+                }
                 
-                setImportStatus({msg: `Sucesso! ${data.length} registros importados para ${table}.`, type: 'success'});
+                setImportStatus({msg: `Sucesso! ${data.length} registros importados.`, type: 'success'});
                 // Reset input
                 event.target.value = '';
             } catch (error: any) {
@@ -99,45 +106,68 @@ export const Settings: React.FC = () => {
                     </div>
                 )}
 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                     
                     {/* PRODUCERS CARD */}
                     <div className="border border-slate-200 rounded-xl p-5 hover:border-emerald-200 transition-colors">
-                        <h3 className="font-bold text-slate-800 mb-2">Produtores</h3>
-                        <p className="text-xs text-slate-500 mb-4 h-10">
-                            Importe cadastros de produtores. Campos: nome, documento, região, email.
+                        <h3 className="font-bold text-slate-800 mb-2">1. Produtores</h3>
+                        <p className="text-xs text-slate-500 mb-4 h-12">
+                            Importe cadastros principais primeiro. Campos: nome, documento, região.
                         </p>
                         <div className="flex flex-col gap-2">
                              <button 
                                 onClick={() => handleDownloadTemplate('producers')}
                                 className="flex items-center justify-center gap-2 w-full py-2 bg-slate-50 text-slate-600 text-xs font-bold uppercase rounded border border-slate-200 hover:bg-slate-100"
                              >
-                                <Download className="w-4 h-4" /> Baixar Modelo CSV
+                                <Download className="w-4 h-4" /> Baixar Modelo
                             </button>
                             <label className={`flex items-center justify-center gap-2 w-full py-2 bg-emerald-600 text-white text-xs font-bold uppercase rounded cursor-pointer hover:bg-emerald-700 ${loading ? 'opacity-50 pointer-events-none' : ''}`}>
                                 <Upload className="w-4 h-4" /> 
-                                {loading ? 'Importando...' : 'Importar CSV'}
+                                {loading ? '...' : 'Importar CSV'}
                                 <input type="file" accept=".csv" className="hidden" onChange={(e) => handleImport('producers', e)} disabled={loading} />
+                            </label>
+                        </div>
+                    </div>
+
+                    {/* FARMS CARD */}
+                    <div className="border border-slate-200 rounded-xl p-5 hover:border-emerald-200 transition-colors bg-emerald-50/30">
+                        <h3 className="font-bold text-slate-800 mb-2 flex items-center gap-2">
+                            2. Fazendas <MapPin className="w-4 h-4 text-emerald-600" />
+                        </h3>
+                        <p className="text-xs text-slate-500 mb-4 h-12">
+                            Vincula fazendas aos produtores pelo CPF/CNPJ. Importe os produtores antes.
+                        </p>
+                        <div className="flex flex-col gap-2">
+                             <button 
+                                onClick={() => handleDownloadTemplate('farms')}
+                                className="flex items-center justify-center gap-2 w-full py-2 bg-slate-50 text-slate-600 text-xs font-bold uppercase rounded border border-slate-200 hover:bg-slate-100"
+                             >
+                                <Download className="w-4 h-4" /> Baixar Modelo
+                            </button>
+                            <label className={`flex items-center justify-center gap-2 w-full py-2 bg-emerald-600 text-white text-xs font-bold uppercase rounded cursor-pointer hover:bg-emerald-700 ${loading ? 'opacity-50 pointer-events-none' : ''}`}>
+                                <Upload className="w-4 h-4" /> 
+                                {loading ? '...' : 'Importar CSV'}
+                                <input type="file" accept=".csv" className="hidden" onChange={(e) => handleImport('farms', e)} disabled={loading} />
                             </label>
                         </div>
                     </div>
 
                     {/* BUYERS CARD */}
                      <div className="border border-slate-200 rounded-xl p-5 hover:border-blue-200 transition-colors">
-                        <h3 className="font-bold text-slate-800 mb-2">Compradores</h3>
-                        <p className="text-xs text-slate-500 mb-4 h-10">
-                            Importe tradings e fábricas. Campos: razão social, cnpj, inscrição, endereço.
+                        <h3 className="font-bold text-slate-800 mb-2">3. Compradores</h3>
+                        <p className="text-xs text-slate-500 mb-4 h-12">
+                            Importe tradings e fábricas. Campos: razão social, cnpj, inscrição.
                         </p>
                         <div className="flex flex-col gap-2">
                              <button 
                                 onClick={() => handleDownloadTemplate('buyers')}
                                 className="flex items-center justify-center gap-2 w-full py-2 bg-slate-50 text-slate-600 text-xs font-bold uppercase rounded border border-slate-200 hover:bg-slate-100"
                              >
-                                <Download className="w-4 h-4" /> Baixar Modelo CSV
+                                <Download className="w-4 h-4" /> Baixar Modelo
                             </button>
                              <label className={`flex items-center justify-center gap-2 w-full py-2 bg-blue-600 text-white text-xs font-bold uppercase rounded cursor-pointer hover:bg-blue-700 ${loading ? 'opacity-50 pointer-events-none' : ''}`}>
                                 <Upload className="w-4 h-4" /> 
-                                {loading ? 'Importando...' : 'Importar CSV'}
+                                {loading ? '...' : 'Importar CSV'}
                                 <input type="file" accept=".csv" className="hidden" onChange={(e) => handleImport('buyers', e)} disabled={loading} />
                             </label>
                         </div>
@@ -145,8 +175,8 @@ export const Settings: React.FC = () => {
 
                     {/* CONTRACTS CARD */}
                     <div className="border border-slate-200 rounded-xl p-5 hover:border-amber-200 transition-colors">
-                        <h3 className="font-bold text-slate-800 mb-2">Contratos (Histórico)</h3>
-                        <p className="text-xs text-slate-500 mb-4 h-10">
+                        <h3 className="font-bold text-slate-800 mb-2">4. Contratos</h3>
+                        <p className="text-xs text-slate-500 mb-4 h-12">
                             Importe seu legado de contratos. Certifique-se que Vendedor/Comprador existam.
                         </p>
                         <div className="flex flex-col gap-2">
@@ -154,11 +184,11 @@ export const Settings: React.FC = () => {
                                 onClick={() => handleDownloadTemplate('contracts')}
                                 className="flex items-center justify-center gap-2 w-full py-2 bg-slate-50 text-slate-600 text-xs font-bold uppercase rounded border border-slate-200 hover:bg-slate-100"
                              >
-                                <Download className="w-4 h-4" /> Baixar Modelo CSV
+                                <Download className="w-4 h-4" /> Baixar Modelo
                             </button>
                              <label className={`flex items-center justify-center gap-2 w-full py-2 bg-amber-600 text-white text-xs font-bold uppercase rounded cursor-pointer hover:bg-amber-700 ${loading ? 'opacity-50 pointer-events-none' : ''}`}>
                                 <Upload className="w-4 h-4" /> 
-                                {loading ? 'Importando...' : 'Importar CSV'}
+                                {loading ? '...' : 'Importar CSV'}
                                 <input type="file" accept=".csv" className="hidden" onChange={(e) => handleImport('contracts', e)} disabled={loading} />
                             </label>
                         </div>
@@ -171,8 +201,8 @@ export const Settings: React.FC = () => {
                     <ul className="list-disc pl-5 space-y-1">
                         <li>Utilize a separação por vírgulas (<code>,</code>).</li>
                         <li>Não use pontos de milhar em números, apenas ponto para decimais (Ex: <code>1200.50</code>).</li>
-                        <li>As datas devem estar no formato <code>YYYY-MM-DD</code> se houver (o sistema gerará data atual se não informado).</li>
-                        <li>Para Produtores: <code>funrural_type</code> deve ser exatamente <code>FOLHA</code> ou <code>COMERCIALIZACAO</code>.</li>
+                        <li>As datas devem estar no formato <code>YYYY-MM-DD</code>.</li>
+                        <li><strong>Importante:</strong> Importe os Produtores (Passo 1) antes de importar as Fazendas (Passo 2).</li>
                     </ul>
                 </div>
 

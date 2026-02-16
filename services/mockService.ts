@@ -293,3 +293,52 @@ export const bulkInsert = async (table: string, data: any[]) => {
     const { error } = await supabase.from(table).insert(data);
     if (error) throw error;
 };
+
+// Special function to handle Farm import by linking Document (CPF/CNPJ) to Producer ID
+export const bulkInsertFarms = async (csvData: any[]) => {
+    if (csvData.length === 0) return;
+
+    // 1. Extract all producer documents from CSV
+    const documents = [...new Set(csvData.map(row => row.producer_doc).filter(Boolean))];
+
+    // 2. Fetch Producer IDs matching these documents
+    const { data: producers, error } = await supabase
+        .from('producers')
+        .select('id, doc')
+        .in('doc', documents);
+
+    if (error) throw new Error('Erro ao buscar produtores: ' + error.message);
+    if (!producers) return;
+
+    // 3. Create a map: Document -> UUID
+    const docMap = new Map();
+    producers.forEach(p => docMap.set(p.doc, p.id));
+
+    // 4. Prepare Farms for Insert
+    const farmsToInsert: any[] = [];
+    const errors: string[] = [];
+
+    csvData.forEach(row => {
+        const producerId = docMap.get(row.producer_doc);
+        if (producerId) {
+            farmsToInsert.push({
+                producer_id: producerId,
+                name: row.name,
+                address: row.address
+            });
+        } else {
+            errors.push(`Produtor com CPF/CNPJ ${row.producer_doc} não encontrado.`);
+        }
+    });
+
+    // 5. Insert
+    if (farmsToInsert.length > 0) {
+        const { error: insertError } = await supabase.from('farms').insert(farmsToInsert);
+        if (insertError) throw insertError;
+    }
+
+    if (errors.length > 0) {
+        console.warn("Algumas fazendas não foram importadas:", errors);
+        throw new Error(`Importação parcial. ${farmsToInsert.length} salvas. ${errors.length} falharam (Produtor não encontrado).`);
+    }
+};
