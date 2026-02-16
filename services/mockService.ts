@@ -294,7 +294,30 @@ export const bulkInsert = async (table: string, data: any[]) => {
     if (error) throw error;
 };
 
-// Special function to handle Farm import by linking Document (CPF/CNPJ) to Producer ID
+// Specialized Producer Insert (Handles Bank Details JSON)
+export const bulkInsertProducers = async (data: any[]) => {
+    const formattedData = data.map(row => ({
+        name: row.name,
+        doc: row.doc,
+        state_insc: row.state_insc,
+        email: row.email,
+        region: row.region,
+        funrural_type: row.funrural_type,
+        // Compress bank columns into single JSONB object
+        bank_details: {
+            bankName: row.bank_name || '',
+            agency: row.agency || '',
+            account: row.account || '',
+            holder: row.holder || row.name, // Default to producer name if empty
+            holderDoc: row.holder_doc || row.doc // Default to producer doc if empty
+        }
+    }));
+
+    const { error } = await supabase.from('producers').insert(formattedData);
+    if (error) throw error;
+};
+
+// Specialized Farm Insert (Links to Producer by Doc)
 export const bulkInsertFarms = async (csvData: any[]) => {
     if (csvData.length === 0) return;
 

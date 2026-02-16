@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import { Download, Upload, Database, AlertCircle, CheckCircle, FileSpreadsheet, MapPin } from 'lucide-react';
-import { bulkInsert, bulkInsertFarms } from '../services/mockService';
+import { bulkInsert, bulkInsertFarms, bulkInsertProducers } from '../services/mockService';
 
 const CSV_TEMPLATES = {
-    producers: `name,doc,state_insc,region,email,funrural_type\nJoão Silva,111.222.333-44,12345678,Pedro Afonso,joao@email.com,COMERCIALIZACAO`,
+    producers: `name,doc,state_insc,region,email,funrural_type,bank_name,agency,account\nJoão Silva,111.222.333-44,12345678,Pedro Afonso,joao@email.com,COMERCIALIZACAO,Banco do Brasil,1234-5,99999-X`,
     farms: `producer_doc,name,address\n111.222.333-44,Fazenda Colorado,Rodovia TO-050 km 10`,
     buyers: `name,doc,state_insc,address,type\nCargill Agricola,12.345.678/0001-90,99988877,Av Industrial 1000,TRADING`,
     contracts: `number,product,crop,seller_name,buyer_name,total_bags,total_tons,final_price,pickup_location,status,freight_type\n1001S24,SOJA,23/24,João Silva,Cargill Agricola,5000,300,120.50,Fazenda Esperança,Assinado,FOB`,
@@ -40,7 +40,13 @@ export const Settings: React.FC = () => {
                 let val: string | number | boolean = values[index];
                 
                 // Simple type conversion
-                if (val && !isNaN(Number(val)) && header !== 'doc' && header !== 'producer_doc' && header !== 'number') {
+                if (val && !isNaN(Number(val)) && 
+                    header !== 'doc' && 
+                    header !== 'producer_doc' && 
+                    header !== 'number' &&
+                    header !== 'account' &&
+                    header !== 'agency'
+                ) {
                      val = Number(val);
                 }
                 obj[header] = val;
@@ -68,6 +74,9 @@ export const Settings: React.FC = () => {
                 if (table === 'farms') {
                     // Logic specific for farms (lookup producer ID)
                     await bulkInsertFarms(data);
+                } else if (table === 'producers') {
+                    // Logic specific for producers (convert flat bank columns to JSON)
+                    await bulkInsertProducers(data);
                 } else {
                     // Generic Logic
                     await bulkInsert(table, data);
@@ -112,7 +121,7 @@ export const Settings: React.FC = () => {
                     <div className="border border-slate-200 rounded-xl p-5 hover:border-emerald-200 transition-colors">
                         <h3 className="font-bold text-slate-800 mb-2">1. Produtores</h3>
                         <p className="text-xs text-slate-500 mb-4 h-12">
-                            Importe cadastros principais primeiro. Campos: nome, documento, região.
+                            Importe cadastros principais. Inclui colunas para dados bancários básicos.
                         </p>
                         <div className="flex flex-col gap-2">
                              <button 
