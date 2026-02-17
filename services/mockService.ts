@@ -35,9 +35,9 @@ const mapContractFromDB = (c: any): Contract => ({
     product: c.product,
     crop: c.crop,
     sellerName: c.seller_name,
-    sellerDoc: c.seller_doc, // Mapeando Doc Vendedor
+    sellerDoc: c.seller_doc, // Mapeando Doc Vendedor para o Frontend
     buyerName: c.buyer_name,
-    buyerDoc: c.buyer_doc, // Mapeando Doc Comprador
+    buyerDoc: c.buyer_doc, // Mapeando Doc Comprador para o Frontend
     totalBags: c.total_bags,
     totalTons: c.total_tons,
     deliveredBags: c.delivered_bags,
@@ -58,7 +58,7 @@ const mapContractFromDB = (c: any): Contract => ({
     commissionPerBag: c.commission_per_bag,
     paymentDate: c.payment_date,
     commissionDueDate: c.commission_due_date,
-    closingDate: c.closing_date || c.created_at, 
+    closingDate: c.closing_date, // Agora usa a coluna real
     status: c.status,
     createdAt: c.created_at,
     signatureData: c.signature_data
@@ -216,9 +216,9 @@ export const saveContract = async (contract: Contract) => {
         product: contract.product,
         crop: contract.crop,
         seller_name: contract.sellerName,
-        seller_doc: contract.sellerDoc, // SALVANDO DOC
+        seller_doc: contract.sellerDoc, // SALVANDO DOC para garantir o vínculo
         buyer_name: contract.buyerName,
-        buyer_doc: contract.buyerDoc, // SALVANDO DOC
+        buyer_doc: contract.buyerDoc,   // SALVANDO DOC para garantir o vínculo
         total_bags: contract.totalBags,
         total_tons: contract.totalTons,
         delivered_bags: contract.deliveredBags,
@@ -239,7 +239,7 @@ export const saveContract = async (contract: Contract) => {
         commission_per_bag: contract.commissionPerBag,
         payment_date: contract.paymentDate,
         commission_due_date: contract.commissionDueDate,
-        closing_date: contract.closingDate,
+        closing_date: contract.closingDate, // Agora salva na coluna correta
         status: contract.status,
         signature_data: contract.signatureData
     };
@@ -296,14 +296,32 @@ export const generateContractNumber = async (product: string, crop: string): Pro
 
 // --- BULK OPERATIONS FOR CSV IMPORT ---
 
-// Generic Insert (Modified to UPSERT)
+// Generic Insert (Modified to UPSERT with DEDUPLICATION and SCHEMA MAPPING)
 export const bulkInsert = async (table: string, data: any[]) => {
-    // Definir chave de conflito para permitir atualização
-    let options = {};
-    if (table === 'contracts') options = { onConflict: 'number' };
-    if (table === 'buyers') options = { onConflict: 'doc' };
+    // 1. Identificar chave de conflito (Unique Key)
+    let conflictKey = '';
+    if (table === 'contracts') conflictKey = 'number';
+    if (table === 'buyers') conflictKey = 'doc';
 
-    const { error } = await supabase.from(table).upsert(data, options);
+    let dataToInsert = data;
+
+    // 2. Se houver chave, deduplicar o array ANTES de enviar para o banco
+    if (conflictKey) {
+        const uniqueMap = new Map();
+        dataToInsert.forEach(item => {
+            const key = item[conflictKey];
+            if (key) {
+                // Se já existir, sobrescreve com o último encontrado
+                uniqueMap.set(key, item);
+            }
+        });
+        dataToInsert = Array.from(uniqueMap.values());
+    }
+
+    // 3. Executar UPSERT com os dados limpos
+    const options = conflictKey ? { onConflict: conflictKey } : {};
+    
+    const { error } = await supabase.from(table).upsert(dataToInsert, options);
     if (error) throw error;
 };
 
