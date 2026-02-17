@@ -21,7 +21,9 @@ export interface Contract {
   
   // Parties
   sellerName: string;
+  sellerDoc?: string; // NOVO: CPF/CNPJ Vendedor
   buyerName: string;
+  buyerDoc?: string; // NOVO: CNPJ Comprador
   
   // Logistics & Terms
   totalBags: number; // Quantidade em sacas (60kg)

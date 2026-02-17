@@ -1,3 +1,4 @@
+
 import { supabase } from './supabase';
 import { Contract, Shipment, ContractStatus, PricingMode, MarketData, Producer, Buyer, Farm } from '../types';
 
@@ -34,7 +35,9 @@ const mapContractFromDB = (c: any): Contract => ({
     product: c.product,
     crop: c.crop,
     sellerName: c.seller_name,
+    sellerDoc: c.seller_doc, // Mapeando Doc Vendedor
     buyerName: c.buyer_name,
+    buyerDoc: c.buyer_doc, // Mapeando Doc Comprador
     totalBags: c.total_bags,
     totalTons: c.total_tons,
     deliveredBags: c.delivered_bags,
@@ -55,7 +58,7 @@ const mapContractFromDB = (c: any): Contract => ({
     commissionPerBag: c.commission_per_bag,
     paymentDate: c.payment_date,
     commissionDueDate: c.commission_due_date,
-    closingDate: c.closing_date || c.created_at, // Fallback para data de criação se nulo
+    closingDate: c.closing_date || c.created_at, 
     status: c.status,
     createdAt: c.created_at,
     signatureData: c.signature_data
@@ -213,7 +216,9 @@ export const saveContract = async (contract: Contract) => {
         product: contract.product,
         crop: contract.crop,
         seller_name: contract.sellerName,
+        seller_doc: contract.sellerDoc, // SALVANDO DOC
         buyer_name: contract.buyerName,
+        buyer_doc: contract.buyerDoc, // SALVANDO DOC
         total_bags: contract.totalBags,
         total_tons: contract.totalTons,
         delivered_bags: contract.deliveredBags,
@@ -234,7 +239,7 @@ export const saveContract = async (contract: Contract) => {
         commission_per_bag: contract.commissionPerBag,
         payment_date: contract.paymentDate,
         commission_due_date: contract.commissionDueDate,
-        closing_date: contract.closingDate, // Salvando data de fechamento
+        closing_date: contract.closingDate,
         status: contract.status,
         signature_data: contract.signatureData
     };
@@ -298,21 +303,15 @@ export const bulkInsert = async (table: string, data: any[]) => {
 
 // Specialized Producer Insert (Handles Bank Details JSON)
 export const bulkInsertProducers = async (data: any[]) => {
-    // Normalizer function: Removes accents and forces Uppercase
-    // Ex: "Comercialização" -> "COMERCIALIZACAO"
     const normalize = (str: string) => str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
 
     const formattedData = data.map(row => {
-        // Safe robust normalization
         const fTypeRaw = row.funrural_type ? normalize(row.funrural_type.toString()) : '';
         let fType = null;
 
-        // "Fuzzy" matching
         if (fTypeRaw.includes('FOLHA')) fType = 'FOLHA';
         else if (fTypeRaw.includes('PJ') || fTypeRaw.includes('ISENTO')) fType = 'PJ_ISENTO';
         else if (fTypeRaw.includes('COMERCIALIZA')) fType = 'COMERCIALIZACAO';
-        // Se não der match, envia null para não quebrar a importação, 
-        // mas o usuário verá o campo vazio no sistema.
 
         return {
             name: row.name,
@@ -321,13 +320,12 @@ export const bulkInsertProducers = async (data: any[]) => {
             email: row.email,
             region: row.region,
             funrural_type: fType,
-            // Compress bank columns into single JSONB object
             bank_details: {
                 bankName: row.bank_name || '',
                 agency: row.agency || '',
                 account: row.account || '',
-                holder: row.holder || row.name, // Default to producer name if empty
-                holderDoc: row.holder_doc || row.doc // Default to producer doc if empty
+                holder: row.holder || row.name,
+                holderDoc: row.holder_doc || row.doc
             }
         };
     });
@@ -340,10 +338,8 @@ export const bulkInsertProducers = async (data: any[]) => {
 export const bulkInsertFarms = async (csvData: any[]) => {
     if (csvData.length === 0) return;
 
-    // 1. Extract all producer documents from CSV
     const documents = [...new Set(csvData.map(row => row.producer_doc).filter(Boolean))];
 
-    // 2. Fetch Producer IDs matching these documents
     const { data: producers, error } = await supabase
         .from('producers')
         .select('id, doc')
@@ -352,11 +348,9 @@ export const bulkInsertFarms = async (csvData: any[]) => {
     if (error) throw new Error('Erro ao buscar produtores: ' + error.message);
     if (!producers) return;
 
-    // 3. Create a map: Document -> UUID
     const docMap = new Map();
     producers.forEach(p => docMap.set(p.doc, p.id));
 
-    // 4. Prepare Farms for Insert
     const farmsToInsert: any[] = [];
     const errors: string[] = [];
 
@@ -373,7 +367,6 @@ export const bulkInsertFarms = async (csvData: any[]) => {
         }
     });
 
-    // 5. Insert
     if (farmsToInsert.length > 0) {
         const { error: insertError } = await supabase.from('farms').insert(farmsToInsert);
         if (insertError) throw insertError;

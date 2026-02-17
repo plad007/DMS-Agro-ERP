@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { Download, Upload, Database, AlertCircle, CheckCircle, FileSpreadsheet, MapPin, Settings2 } from 'lucide-react';
 import { bulkInsert, bulkInsertFarms, bulkInsertProducers } from '../services/mockService';
@@ -6,7 +7,7 @@ const CSV_TEMPLATES = {
     producers: `name,doc,state_insc,region,email,funrural_type,bank_name,agency,account\nJoão Silva,111.222.333-44,12345678,"Lot. São Silvestre, N 45",joao@email.com,COMERCIALIZACAO,Banco do Brasil,1234-5,99999-X`,
     farms: `producer_doc,name,address\n111.222.333-44,Fazenda Colorado,Rodovia TO-050 km 10`,
     buyers: `name,doc,state_insc,address,type\nCargill Agricola,12.345.678/0001-90,99988877,Av Industrial 1000,TRADING`,
-    contracts: `number,product,crop,seller_name,buyer_name,total_bags,total_tons,final_price,pickup_location,status,freight_type,closing_date,currency,exchange_rate\n1001S24,SOJA,23/24,João Silva,Cargill Agricola,5000,300,120.50,Fazenda Esperança,Assinado,FOB,2024-03-15,BRL,1.00`,
+    contracts: `number,product,crop,seller_name,seller_doc,buyer_name,buyer_doc,total_bags,total_tons,final_price,pickup_location,status,freight_type,closing_date,currency,exchange_rate\n1001S24,SOJA,23/24,João Silva,111.222.333-44,Cargill Agricola,12.345.678/0001-90,5000,300,120.50,Fazenda Esperança,Assinado,FOB,2024-03-15,BRL,1.00`,
 };
 
 export const Settings: React.FC = () => {
@@ -82,6 +83,8 @@ export const Settings: React.FC = () => {
                 if (val && !isNaN(Number(val)) && 
                     header !== 'doc' && 
                     header !== 'producer_doc' && 
+                    header !== 'seller_doc' && // Force String
+                    header !== 'buyer_doc' && // Force String
                     header !== 'number' &&
                     header !== 'account' &&
                     header !== 'agency' &&

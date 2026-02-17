@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { Plus, Search, Filter, Download, FileSpreadsheet, Lock, Unlock, Edit2, Share2, CheckCircle, FileText, Calendar, MapPin, DollarSign, Truck, Calculator, Eye, Printer, X, Sprout, FileBarChart, Settings2, FileDown, Send } from 'lucide-react';
@@ -214,20 +215,28 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
 
   const handleSellerChange = (sellerName: string) => {
     const seller = producersList.find(p => p.name === sellerName);
-    setFormData({...formData, sellerName});
+    // AUTO LINK BY DOCUMENT
+    setFormData({...formData, sellerName, sellerDoc: seller?.doc});
+    
     if (seller) {
         const locations = seller.farms.map(f => ({name: f.name, id: f.id}));
         setAvailableLocations(locations);
         if (locations.length > 0) {
-            setFormData(prev => ({...prev, sellerName, pickupLocation: locations[0].name}));
+            setFormData(prev => ({...prev, sellerName, sellerDoc: seller.doc, pickupLocation: locations[0].name}));
             setIsNewLocation(false);
         } else {
             setIsNewLocation(true);
-            setFormData(prev => ({...prev, sellerName, pickupLocation: ''}));
+            setFormData(prev => ({...prev, sellerName, sellerDoc: seller.doc, pickupLocation: ''}));
         }
     } else {
         setAvailableLocations([]);
     }
+  };
+
+  const handleBuyerChange = (buyerName: string) => {
+      const buyer = buyersList.find(b => b.name === buyerName);
+      // AUTO LINK BY DOCUMENT
+      setFormData({...formData, buyerName, buyerDoc: buyer?.doc});
   };
 
   const handleProductChange = async (newProduct: 'SOJA' | 'MILHO' | 'TRIGO') => {
@@ -273,7 +282,9 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
       product: formData.product as any,
       crop: formData.crop!,
       sellerName: formData.sellerName!,
+      sellerDoc: formData.sellerDoc, // Saving Doc
       buyerName: formData.buyerName!,
+      buyerDoc: formData.buyerDoc, // Saving Doc
       totalBags: Number(formData.totalBags),
       totalTons: Number(formData.totalTons || 0),
       deliveredBags: formData.deliveredBags || 0,
@@ -465,7 +476,7 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
                     <div className="p-1 border-b border-black text-xs relative">
                         <div className="grid grid-cols-[80px_1fr_120px_1fr]">
                             <span className="font-bold">Nome:</span> <span className="uppercase">{seller?.name || contract.sellerName}</span>
-                            <span className="font-bold text-right pr-2">CPF / CNPJ:</span> <span>{seller?.doc}</span>
+                            <span className="font-bold text-right pr-2">CPF / CNPJ:</span> <span>{contract.sellerDoc || seller?.doc || '-'}</span>
                         </div>
                         <div className="grid grid-cols-[80px_1fr]">
                             <span className="font-bold">Email:</span> <span>{seller?.email || '-'}</span>
@@ -481,7 +492,7 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
                     <div className="p-1 border-b border-black text-xs relative">
                         <div className="grid grid-cols-[80px_1fr_120px_1fr]">
                             <span className="font-bold">Nome:</span> <span className="uppercase">{buyer?.name || contract.buyerName}</span>
-                            <span className="font-bold text-right pr-2">CPF / CNPJ:</span> <span>{buyer?.doc}</span>
+                            <span className="font-bold text-right pr-2">CPF / CNPJ:</span> <span>{contract.buyerDoc || buyer?.doc || '-'}</span>
                         </div>
                         <div className="grid grid-cols-[80px_1fr_120px_1fr]">
                             <span className="font-bold">Endereço:</span> <span className="uppercase">{buyer?.address}</span>
@@ -1030,19 +1041,22 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
                                     <option key={p.id} value={p.name}>{p.name}</option>
                                 ))}
                             </select>
+                            {/* Hidden Doc Display for Verification */}
+                            {formData.sellerDoc && <p className="text-[10px] text-slate-400 mt-1 ml-1">Vinculado ao CPF/CNPJ: {formData.sellerDoc}</p>}
                         </div>
                         <div className="md:col-span-1">
                             <label className="block text-sm font-medium text-slate-700 mb-1">Comprador (Trading/Fábrica)</label>
                              <select 
                                 className="w-full rounded-lg border border-slate-300 p-2.5 bg-white"
                                 value={formData.buyerName || ''}
-                                onChange={(e) => setFormData({...formData, buyerName: e.target.value})}
+                                onChange={(e) => handleBuyerChange(e.target.value)}
                             >
                                 <option value="">Selecione o Comprador</option>
                                 {buyersList.map(b => (
                                     <option key={b.id} value={b.name}>{b.name}</option>
                                 ))}
                             </select>
+                            {formData.buyerDoc && <p className="text-[10px] text-slate-400 mt-1 ml-1">Vinculado ao CNPJ: {formData.buyerDoc}</p>}
                         </div>
                     </div>
                 </section>
