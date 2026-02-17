@@ -7,7 +7,7 @@ const CSV_TEMPLATES = {
     producers: `name,doc,state_insc,region,email,funrural_type,bank_name,agency,account\nJoão Silva,111.222.333-44,12345678,"Lot. São Silvestre, N 45",joao@email.com,COMERCIALIZACAO,Banco do Brasil,1234-5,99999-X`,
     farms: `producer_doc,name,address\n111.222.333-44,Fazenda Colorado,Rodovia TO-050 km 10`,
     buyers: `name,doc,state_insc,address,type\nCargill Agricola,12.345.678/0001-90,99988877,Av Industrial 1000,TRADING`,
-    contracts: `number,product,crop,seller_name,seller_doc,buyer_name,buyer_doc,total_bags,total_tons,final_price,pickup_location,status,freight_type,closing_date,currency,exchange_rate\n1001S24,SOJA,23/24,João Silva,111.222.333-44,Cargill Agricola,12.345.678/0001-90,5000,300,120.50,Fazenda Esperança,Assinado,FOB,2024-03-15,BRL,1.00`,
+    contracts: `number,product,crop,seller_name,seller_doc,buyer_name,buyer_doc,total_bags,total_tons,final_price,pickup_location,status,freight_type,closing_date,payment_date,shipment_start_date,shipment_end_date,currency,exchange_rate,commission_per_bag\n1001S24,SOJA,23/24,João Silva,111.222.333-44,Cargill Agricola,12.345.678/0001-90,5000,300,120.50,Fazenda Esperança,Assinado,FOB,2024-03-15,2024-03-30,2024-04-01,2024-04-15,BRL,1.00,0.50`,
 };
 
 export const Settings: React.FC = () => {
@@ -91,6 +91,9 @@ export const Settings: React.FC = () => {
                     header !== 'state_insc' &&
                     header !== 'ticket_number' &&
                     header !== 'closing_date' &&
+                    header !== 'payment_date' &&
+                    header !== 'shipment_start_date' &&
+                    header !== 'shipment_end_date' &&
                     header !== 'currency'
                 ) {
                      val = Number(val);
@@ -146,6 +149,8 @@ export const Settings: React.FC = () => {
                      errorMsg = "Erro de validação: Um dos campos (provavelmente Funrural ou Tipo) contém um valor inválido.";
                 } else if (errorMsg.includes('violates unique constraint')) {
                      errorMsg = "Erro de duplicidade: CPF/CNPJ ou Contrato já cadastrado.";
+                } else if (errorMsg.includes('invalid input syntax for type date')) {
+                     errorMsg = "Erro de Formatação: Você está tentando importar um texto (provavelmente 'ASSINADO' ou 'FOB') em uma coluna de Data. Verifique a ordem das colunas no seu CSV.";
                 }
 
                 setImportStatus({msg: `Falha: ${errorMsg}`, type: 'error'});
