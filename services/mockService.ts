@@ -51,9 +51,9 @@ const mapContractFromDB = (c: any): Contract => ({
     pricingMode: c.pricing_mode,
     isFixed: c.is_fixed,
     basePrice: c.base_price,
-    cbotComponent: c.cbot_component,
-    basisComponent: c.basis_component,
-    costComponent: c.cost_component,
+    cbot_component: c.cbot_component,
+    basis_component: c.basis_component,
+    cost_component: c.cost_component,
     finalPrice: c.final_price,
     commissionPerBag: c.commission_per_bag,
     paymentDate: c.payment_date,
@@ -314,12 +314,25 @@ export const bulkInsert = async (table: string, data: any[]) => {
                 rest.created_at = closing_date;
             }
             
-            // REGRA INTELIGENTE: Se tem Preço Final, está FIXADO.
-            const price = parseFloat(item.final_price);
-            const isFixed = !isNaN(price) && price > 0;
+            // --- ARREDONDAMENTOS ---
+            // Sacas (2 casas)
+            let totalBags = parseFloat(item.total_bags);
+            if (!isNaN(totalBags)) totalBags = parseFloat(totalBags.toFixed(2));
+
+            // Toneladas (2 casas)
+            let totalTons = parseFloat(item.total_tons);
+            if (!isNaN(totalTons)) totalTons = parseFloat(totalTons.toFixed(2));
+
+            // Preço Final (2 casas)
+            let finalPrice = parseFloat(item.final_price);
+            const isFixed = !isNaN(finalPrice) && finalPrice > 0;
+            if (isFixed) finalPrice = parseFloat(finalPrice.toFixed(2));
             
             return {
                 ...rest,
+                total_bags: totalBags,
+                total_tons: totalTons,
+                final_price: finalPrice,
                 closing_date, // Garante que vai para a coluna correta
                 is_fixed: isFixed // Define status de fixação automaticamente
             };
