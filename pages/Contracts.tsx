@@ -83,7 +83,8 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
     currency: 'BRL',
     product: 'SOJA',
     crop: '23/24',
-    freightType: 'FOB'
+    freightType: 'FOB',
+    closingDate: new Date().toISOString().split('T')[0]
   });
 
   useEffect(() => {
@@ -192,7 +193,8 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
       freightType: 'FOB',
       status: ContractStatus.DRAFT,
       commissionPerBag: 0.50,
-      exchangeRate: marketData.usd
+      exchangeRate: marketData.usd,
+      closingDate: new Date().toISOString().split('T')[0] // Default Today
     });
 
     const today = new Date();
@@ -247,8 +249,8 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
   };
 
   const handleSave = async () => {
-    if (!formData.sellerName || !formData.buyerName || !formData.totalBags || !formData.pickupLocation) {
-        alert("Preencha os campos obrigatórios (Vendedor, Comprador, Volume, Local)");
+    if (!formData.sellerName || !formData.buyerName || !formData.totalBags || !formData.pickupLocation || !formData.closingDate) {
+        alert("Preencha os campos obrigatórios (Data, Vendedor, Comprador, Volume, Local)");
         return;
     }
 
@@ -292,6 +294,7 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
       commissionPerBag: Number(formData.commissionPerBag),
       paymentDate: paymentDate,
       commissionDueDate: commissionDate.toISOString().split('T')[0],
+      closingDate: formData.closingDate!,
       status: formData.status as ContractStatus,
       createdAt: editingContract?.createdAt || new Date().toISOString()
     };
@@ -437,7 +440,7 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
                     <div className="grid grid-cols-3 bg-green-100 border-b border-black text-center py-1 font-bold text-xs uppercase text-black print:bg-green-100 print:text-black print:color-adjust-exact">
                         <div className="border-r border-black">NÚMERO: {contract.number}</div>
                         <div className="border-r border-black">SAFRA: {contract.crop}</div>
-                        <div>DATA EMISSÃO: {new Date(contract.createdAt).toLocaleDateString('pt-BR')}</div>
+                        <div>DATA FECHAMENTO: {new Date(contract.closingDate || contract.createdAt).toLocaleDateString('pt-BR', {timeZone: 'UTC'})}</div>
                     </div>
 
                     {/* Elementos do Negocio */}
@@ -508,7 +511,7 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
                     <div className="bg-gray-300 border-b border-black text-center font-bold text-xs py-0.5 uppercase print:bg-gray-300 print:color-adjust-exact">DADOS BANCÁRIOS</div>
                     <div className="p-1 border-b border-black text-xs">
                         <div className="grid grid-cols-4 gap-2 mb-1">
-                            <div><span className="font-bold">Data Pagtº:</span> {new Date(contract.paymentDate).toLocaleDateString('pt-BR')}</div>
+                            <div><span className="font-bold">Data Pagtº:</span> {new Date(contract.paymentDate).toLocaleDateString('pt-BR', {timeZone: 'UTC'})}</div>
                             <div><span className="font-bold">Banco:</span> {seller?.bankDetails?.bankName}</div>
                             <div><span className="font-bold">Ag:</span> {seller?.bankDetails?.agency}</div>
                             <div><span className="font-bold">C.C.:</span> {seller?.bankDetails?.account}</div>
@@ -684,6 +687,10 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
                     >
                         {contract.number}
                     </button>
+                     <div className="text-[10px] text-slate-400 mt-1 flex items-center gap-1">
+                        <Calendar className="w-3 h-3" />
+                        {new Date(contract.closingDate || contract.createdAt).toLocaleDateString()}
+                    </div>
                   </td>
                   <td className="px-6 py-4">{contract.crop} <span className="text-xs text-slate-400">({contract.product})</span></td>
                   <td className="px-6 py-4">
@@ -884,7 +891,7 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
                             <tbody className="divide-y divide-slate-200">
                                 {reportData.map((c, idx) => (
                                     <tr key={c.id} className="idx % 2 === 0 ? 'bg-white' : 'bg-slate-50'">
-                                        {reportColumns.date && <td className="p-2">{new Date(c.createdAt).toLocaleDateString()}</td>}
+                                        {reportColumns.date && <td className="p-2">{new Date(c.closingDate || c.createdAt).toLocaleDateString()}</td>}
                                         {reportColumns.contract && <td className="p-2 font-bold">{c.number}</td>}
                                         {reportColumns.crop && <td className="p-2">{c.crop} ({c.product.charAt(0)})</td>}
                                         {reportColumns.seller && <td className="p-2 truncate max-w-[120px]">{c.sellerName}</td>}
@@ -972,6 +979,17 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
                             />
                         </div>
 
+                        {/* NEW: Closing Date */}
+                        <div className="bg-amber-50 p-2 rounded-lg border border-amber-200">
+                             <label className="block text-xs font-bold text-amber-800 uppercase mb-1">Data Fechamento</label>
+                             <input 
+                                type="date" 
+                                className="w-full rounded border border-amber-300 p-1.5 text-sm bg-white"
+                                value={formData.closingDate || ''}
+                                onChange={(e) => setFormData({...formData, closingDate: e.target.value})}
+                            />
+                        </div>
+
                         {/* Volume Inputs (Sacas / Tons) */}
                         <div className="md:col-span-1 grid grid-cols-2 gap-2 bg-slate-50 p-2 rounded-lg border border-slate-200">
                              <div>
@@ -1013,7 +1031,7 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
                                 ))}
                             </select>
                         </div>
-                        <div className="md:col-span-2">
+                        <div className="md:col-span-1">
                             <label className="block text-sm font-medium text-slate-700 mb-1">Comprador (Trading/Fábrica)</label>
                              <select 
                                 className="w-full rounded-lg border border-slate-300 p-2.5 bg-white"
@@ -1028,7 +1046,241 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
                         </div>
                     </div>
                 </section>
-                {/* ... (rest of the form sections kept same as before but abbreviated here for xml limit, assuming logic is same as previous step, just keeping context) ... */}
+                
+                {/* 2. Pricing & Payment (No changes needed, but context maintained) */}
+                 <section className="pt-4 border-t border-slate-100">
+                    <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wide mb-4">Preço e Pagamento</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
+                            <div className="flex justify-between mb-4">
+                                <label className="text-sm font-bold text-slate-700">Modo de Precificação</label>
+                                <div className="flex bg-white rounded p-0.5 border border-slate-200">
+                                    <button 
+                                        className={`px-2 py-1 text-xs font-bold rounded ${formData.pricingMode === PricingMode.FIXED ? 'bg-emerald-500 text-white' : 'text-slate-500'}`}
+                                        onClick={() => setFormData({...formData, pricingMode: PricingMode.FIXED})}
+                                    >FIXO</button>
+                                    <button 
+                                        className={`px-2 py-1 text-xs font-bold rounded ${formData.pricingMode === PricingMode.COMPONENTS ? 'bg-emerald-500 text-white' : 'text-slate-500'}`}
+                                        onClick={() => setFormData({...formData, pricingMode: PricingMode.COMPONENTS})}
+                                    >COMP</button>
+                                </div>
+                            </div>
+
+                            {formData.pricingMode === PricingMode.FIXED ? (
+                                <div>
+                                    <label className="block text-xs text-slate-500 uppercase font-bold mb-1">Preço Fixo (R$/sc)</label>
+                                    <input 
+                                        type="number" 
+                                        className="w-full text-xl font-bold text-emerald-700 border-b-2 border-emerald-500 bg-transparent outline-none p-1"
+                                        value={formData.basePrice || ''}
+                                        onChange={(e) => setFormData({...formData, basePrice: parseFloat(e.target.value)})}
+                                    />
+                                </div>
+                            ) : (
+                                <div className="space-y-3">
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <div>
+                                            <label className="text-[10px] uppercase text-slate-500 font-bold">CBOT (Pts)</label>
+                                            <input type="number" className="w-full border rounded p-1 text-sm" value={formData.cbotComponent || ''} onChange={(e) => setFormData({...formData, cbotComponent: parseFloat(e.target.value)})} />
+                                        </div>
+                                         <div>
+                                            <label className="text-[10px] uppercase text-slate-500 font-bold">Basis (Pts)</label>
+                                            <input type="number" className="w-full border rounded p-1 text-sm" value={formData.basisComponent || ''} onChange={(e) => setFormData({...formData, basisComponent: parseFloat(e.target.value)})} />
+                                        </div>
+                                    </div>
+                                    <div>
+                                         <label className="text-[10px] uppercase text-slate-500 font-bold">Custos (R$/sc)</label>
+                                         <input type="number" className="w-full border rounded p-1 text-sm" value={formData.costComponent || ''} onChange={(e) => setFormData({...formData, costComponent: parseFloat(e.target.value)})} />
+                                    </div>
+                                </div>
+                            )}
+
+                             <div className="mt-4 pt-4 border-t border-slate-200">
+                                <div className="flex justify-between items-center">
+                                    <span className="text-sm font-bold text-slate-700">Preço Final</span>
+                                    <span className="text-xl font-black text-slate-800">R$ {calculatedPrice.toFixed(2)}</span>
+                                </div>
+                                <div className="flex items-center gap-2 mt-2">
+                                    <button 
+                                        onClick={() => setFormData({...formData, isFixed: !formData.isFixed})}
+                                        className={`flex-1 py-1.5 text-xs font-bold rounded flex items-center justify-center gap-1 transition-colors ${formData.isFixed ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}
+                                    >
+                                        {formData.isFixed ? <><Lock className="w-3 h-3"/> PREÇO FIXADO</> : <><Unlock className="w-3 h-3"/> A FIXAR</>}
+                                    </button>
+                                </div>
+                             </div>
+                        </div>
+
+                        {/* Payment Terms */}
+                        <div className="md:col-span-2 grid grid-cols-2 gap-4">
+                             <div>
+                                <label className="block text-sm font-medium text-slate-700 mb-1">Data Pagamento</label>
+                                <input type="date" className="w-full border rounded-lg p-2.5" value={formData.paymentDate || ''} onChange={(e) => setFormData({...formData, paymentDate: e.target.value})} />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 mb-1">Comissão (R$/sc)</label>
+                                <div className="relative">
+                                    <input type="number" className="w-full border rounded-lg p-2.5 pl-8" value={formData.commissionPerBag || ''} onChange={(e) => setFormData({...formData, commissionPerBag: parseFloat(e.target.value)})} />
+                                    <DollarSign className="w-4 h-4 text-slate-400 absolute left-2.5 top-3.5" />
+                                </div>
+                            </div>
+                             <div>
+                                <label className="block text-sm font-medium text-slate-700 mb-1">Moeda do Contrato</label>
+                                <select className="w-full border rounded-lg p-2.5 bg-white" value={formData.currency} onChange={(e) => setFormData({...formData, currency: e.target.value as any})}>
+                                    <option value="BRL">BRL - Real</option>
+                                    <option value="USD">USD - Dólar</option>
+                                </select>
+                            </div>
+                             <div>
+                                <label className="block text-sm font-medium text-slate-700 mb-1">Taxa Câmbio (Ref)</label>
+                                <input type="number" className="w-full border rounded-lg p-2.5" value={formData.exchangeRate || ''} onChange={(e) => setFormData({...formData, exchangeRate: parseFloat(e.target.value)})} />
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                {/* 3. Logistics */}
+                <section className="pt-4 border-t border-slate-100">
+                    <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wide mb-4">Logística de Retirada</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div>
+                            <label className="block text-sm font-medium text-slate-700 mb-1">Modalidade Frete</label>
+                            <div className="flex gap-4 mt-2">
+                                <label className="flex items-center gap-2 cursor-pointer border p-3 rounded-lg w-full hover:bg-slate-50">
+                                    <input type="radio" name="freight" checked={formData.freightType === 'FOB'} onChange={() => setFormData({...formData, freightType: 'FOB'})} className="text-emerald-600 focus:ring-emerald-500" />
+                                    <div>
+                                        <span className="block font-bold text-slate-800">FOB</span>
+                                        <span className="text-xs text-slate-500">Retira na Fazenda</span>
+                                    </div>
+                                </label>
+                                <label className="flex items-center gap-2 cursor-pointer border p-3 rounded-lg w-full hover:bg-slate-50">
+                                    <input type="radio" name="freight" checked={formData.freightType === 'CIF'} onChange={() => setFormData({...formData, freightType: 'CIF'})} className="text-emerald-600 focus:ring-emerald-500" />
+                                    <div>
+                                        <span className="block font-bold text-slate-800">CIF</span>
+                                        <span className="text-xs text-slate-500">Entregue no Destino</span>
+                                    </div>
+                                </label>
+                            </div>
+                        </div>
+
+                         <div>
+                            <label className="block text-sm font-medium text-slate-700 mb-1">Local de Embarque (Fazenda)</label>
+                            {isNewLocation ? (
+                                <div className="flex gap-2">
+                                    <input 
+                                        type="text" 
+                                        className="w-full border rounded-lg p-2.5" 
+                                        placeholder="Digite o nome da fazenda..."
+                                        value={formData.pickupLocation || ''} 
+                                        onChange={(e) => setFormData({...formData, pickupLocation: e.target.value})} 
+                                    />
+                                    <button onClick={() => setIsNewLocation(false)} className="text-slate-400 hover:text-slate-600 whitespace-nowrap text-xs">
+                                        Selecionar da Lista
+                                    </button>
+                                </div>
+                            ) : (
+                                <div className="flex gap-2">
+                                    <select 
+                                        className="w-full border rounded-lg p-2.5 bg-white"
+                                        value={formData.pickupLocation || ''}
+                                        onChange={(e) => {
+                                            if(e.target.value === 'NEW') setIsNewLocation(true);
+                                            else setFormData({...formData, pickupLocation: e.target.value});
+                                        }}
+                                    >
+                                        {availableLocations.map(l => (
+                                            <option key={l.id} value={l.name}>{l.name}</option>
+                                        ))}
+                                        <option value="NEW">+ Cadastrar Novo Local</option>
+                                    </select>
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="md:col-span-2">
+                             <label className="block text-sm font-medium text-slate-700 mb-3">Período de Embarque</label>
+                             <div className="flex flex-wrap items-center gap-4 bg-slate-50 p-4 rounded-lg border border-slate-200">
+                                {/* Start Date Selector */}
+                                <div className="flex items-center gap-2">
+                                    <span className="text-sm font-bold text-slate-600">INÍCIO:</span>
+                                    <select 
+                                        className="border rounded p-1.5 text-sm bg-white"
+                                        value={isImmediate ? 'IMEDIATO' : startFortnight}
+                                        onChange={(e) => {
+                                            if (e.target.value === 'IMEDIATO') setIsImmediate(true);
+                                            else {
+                                                setIsImmediate(false);
+                                                setStartFortnight(e.target.value as any);
+                                            }
+                                        }}
+                                    >
+                                        <option value="IMEDIATO">Imediato</option>
+                                        <option value="1">1ª Quinzena</option>
+                                        <option value="2">2ª Quinzena</option>
+                                    </select>
+                                    {!isImmediate && (
+                                        <>
+                                            <select 
+                                                className="border rounded p-1.5 text-sm bg-white"
+                                                value={startMonth}
+                                                onChange={(e) => setStartMonth(parseInt(e.target.value))}
+                                            >
+                                                {MONTHS.map((m, i) => <option key={i} value={i}>{m}</option>)}
+                                            </select>
+                                            <select 
+                                                className="border rounded p-1.5 text-sm bg-white"
+                                                value={startYear}
+                                                onChange={(e) => setStartYear(parseInt(e.target.value))}
+                                            >
+                                                {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
+                                            </select>
+                                        </>
+                                    )}
+                                </div>
+
+                                <span className="text-slate-400">Até</span>
+
+                                {/* End Date Selector */}
+                                 <div className="flex items-center gap-2">
+                                    <span className="text-sm font-bold text-slate-600">FIM:</span>
+                                    <select 
+                                        className="border rounded p-1.5 text-sm bg-white"
+                                        value={endFortnight}
+                                        onChange={(e) => setEndFortnight(e.target.value as any)}
+                                    >
+                                        <option value="1">1ª Quinzena</option>
+                                        <option value="2">2ª Quinzena</option>
+                                    </select>
+                                    <select 
+                                        className="border rounded p-1.5 text-sm bg-white"
+                                        value={endMonth}
+                                        onChange={(e) => setEndMonth(parseInt(e.target.value))}
+                                    >
+                                        {MONTHS.map((m, i) => <option key={i} value={i}>{m}</option>)}
+                                    </select>
+                                    <select 
+                                        className="border rounded p-1.5 text-sm bg-white"
+                                        value={endYear}
+                                        onChange={(e) => setEndYear(parseInt(e.target.value))}
+                                    >
+                                        {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
+                                    </select>
+                                </div>
+                             </div>
+                        </div>
+                    </div>
+                </section>
+
+                {/* 4. Observations */}
+                <section className="pt-4 border-t border-slate-100">
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Observações do Contrato</label>
+                    <textarea 
+                        className="w-full border rounded-lg p-3 h-24" 
+                        placeholder="Detalhes adicionais, instruções de pagamento, qualidade..."
+                        value={formData.observation || ''}
+                        onChange={(e) => setFormData({...formData, observation: e.target.value})}
+                    ></textarea>
+                </section>
                 
                 <div className="p-6 border-t border-slate-100 flex justify-end gap-3 bg-slate-50 rounded-b-xl sticky bottom-0">
                     <button onClick={() => setIsModalOpen(false)} className="px-5 py-2 text-slate-600 hover:bg-slate-200 rounded-lg">Cancelar</button>

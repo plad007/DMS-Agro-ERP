@@ -55,6 +55,7 @@ const mapContractFromDB = (c: any): Contract => ({
     commissionPerBag: c.commission_per_bag,
     paymentDate: c.payment_date,
     commissionDueDate: c.commission_due_date,
+    closingDate: c.closing_date || c.created_at, // Fallback para data de criação se nulo
     status: c.status,
     createdAt: c.created_at,
     signatureData: c.signature_data
@@ -233,6 +234,7 @@ export const saveContract = async (contract: Contract) => {
         commission_per_bag: contract.commissionPerBag,
         payment_date: contract.paymentDate,
         commission_due_date: contract.commissionDueDate,
+        closing_date: contract.closingDate, // Salvando data de fechamento
         status: contract.status,
         signature_data: contract.signatureData
     };

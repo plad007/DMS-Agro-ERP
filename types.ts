@@ -50,6 +50,8 @@ export interface Contract {
   commissionPerBag: number;
   paymentDate: string;
   commissionDueDate: string; // paymentDate + 1
+  
+  closingDate: string; // Nova Data de Fechamento do Negócio
 
   status: ContractStatus;
   createdAt: string;
