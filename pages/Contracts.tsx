@@ -808,32 +808,142 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
                             Configurar Relatório
                         </h3>
                     </div>
-                    <div className="p-4 flex-1 overflow-y-auto max-h-[70vh]">
-                        {/* Report Filters Content */}
-                        <div className="flex justify-between items-center mb-3">
-                            <p className="text-xs font-bold text-slate-400 uppercase">Colunas & Filtros</p>
-                            <button 
-                                onClick={() => setReportFilters({product:'', crop:'', seller:'', buyer:'', status:'', freight:'', currency:''})}
-                                className="text-[10px] text-blue-600 hover:underline"
-                            >
-                                Limpar Filtros
-                            </button>
-                        </div>
+                    
+                    <div className="p-4 flex-1 overflow-y-auto max-h-[70vh] space-y-6">
                         
-                        <div className="space-y-4">
-                             <div className="p-2 bg-slate-50 rounded border border-slate-100">
-                                <label className="flex items-center gap-2 text-sm text-slate-800 font-medium cursor-pointer">
-                                    <input type="checkbox" checked={reportColumns.date} onChange={() => toggleReportColumn('date')} className="rounded text-emerald-600 focus:ring-emerald-500" />
-                                    Data Emissão
-                                </label>
-                             </div>
-                             <div className="p-2 bg-slate-50 rounded border border-slate-100">
-                                <label className="flex items-center gap-2 text-sm text-slate-800 font-medium cursor-pointer">
-                                    <input type="checkbox" checked={reportColumns.contract} onChange={() => toggleReportColumn('contract')} className="rounded text-emerald-600 focus:ring-emerald-500" />
-                                    Nº Contrato
-                                </label>
+                        {/* DATA FILTERS SECTION - ADDED */}
+                        <div>
+                            <div className="flex justify-between items-center mb-3">
+                                <p className="text-xs font-bold text-slate-400 uppercase">Filtros de Dados</p>
+                                <button 
+                                    onClick={() => setReportFilters({product:'', crop:'', seller:'', buyer:'', status:'', freight:'', currency:''})}
+                                    className="text-[10px] text-blue-600 hover:underline"
+                                >
+                                    Limpar
+                                </button>
+                            </div>
+                            <div className="space-y-3">
+                                {/* Safra */}
+                                <div>
+                                    <label className="text-xs font-semibold text-slate-600">Safra</label>
+                                    <input 
+                                        type="text" 
+                                        className="w-full text-xs border border-slate-300 rounded p-1.5"
+                                        placeholder="Ex: 23/24"
+                                        value={reportFilters.crop}
+                                        onChange={e => setReportFilters({...reportFilters, crop: e.target.value})}
+                                    />
+                                </div>
+                                {/* Produto */}
+                                <div>
+                                    <label className="text-xs font-semibold text-slate-600">Produto</label>
+                                    <select 
+                                        className="w-full text-xs border border-slate-300 rounded p-1.5 bg-white"
+                                        value={reportFilters.product}
+                                        onChange={e => setReportFilters({...reportFilters, product: e.target.value})}
+                                    >
+                                        <option value="">Todos</option>
+                                        <option value="SOJA">Soja</option>
+                                        <option value="MILHO">Milho</option>
+                                        <option value="TRIGO">Trigo</option>
+                                    </select>
+                                </div>
+                                {/* Vendedor */}
+                                <div>
+                                    <label className="text-xs font-semibold text-slate-600">Vendedor</label>
+                                    <select 
+                                        className="w-full text-xs border border-slate-300 rounded p-1.5 bg-white"
+                                        value={reportFilters.seller}
+                                        onChange={e => setReportFilters({...reportFilters, seller: e.target.value})}
+                                    >
+                                        <option value="">Todos</option>
+                                        {producersList.map(p => <option key={p.id} value={p.name}>{p.name}</option>)}
+                                    </select>
+                                </div>
+                                {/* Comprador */}
+                                <div>
+                                    <label className="text-xs font-semibold text-slate-600">Comprador</label>
+                                    <select 
+                                        className="w-full text-xs border border-slate-300 rounded p-1.5 bg-white"
+                                        value={reportFilters.buyer}
+                                        onChange={e => setReportFilters({...reportFilters, buyer: e.target.value})}
+                                    >
+                                        <option value="">Todos</option>
+                                        {buyersList.map(b => <option key={b.id} value={b.name}>{b.name}</option>)}
+                                    </select>
+                                </div>
+                                {/* Status */}
+                                <div>
+                                    <label className="text-xs font-semibold text-slate-600">Status</label>
+                                    <select 
+                                        className="w-full text-xs border border-slate-300 rounded p-1.5 bg-white"
+                                        value={reportFilters.status}
+                                        onChange={e => setReportFilters({...reportFilters, status: e.target.value})}
+                                    >
+                                        <option value="">Todos</option>
+                                        {Object.values(ContractStatus).map(s => <option key={s} value={s}>{s}</option>)}
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+
+                        <hr className="border-slate-100" />
+
+                        {/* COLUMNS SECTION */}
+                        <div>
+                             <p className="text-xs font-bold text-slate-400 uppercase mb-3">Colunas Visíveis</p>
+                             <div className="space-y-2">
+                                <div className="p-2 bg-slate-50 rounded border border-slate-100">
+                                    <label className="flex items-center gap-2 text-sm text-slate-800 font-medium cursor-pointer">
+                                        <input type="checkbox" checked={reportColumns.date} onChange={() => toggleReportColumn('date')} className="rounded text-emerald-600 focus:ring-emerald-500" />
+                                        Data Emissão
+                                    </label>
+                                </div>
+                                <div className="p-2 bg-slate-50 rounded border border-slate-100">
+                                    <label className="flex items-center gap-2 text-sm text-slate-800 font-medium cursor-pointer">
+                                        <input type="checkbox" checked={reportColumns.contract} onChange={() => toggleReportColumn('contract')} className="rounded text-emerald-600 focus:ring-emerald-500" />
+                                        Nº Contrato
+                                    </label>
+                                </div>
+                                <div className="p-2 bg-slate-50 rounded border border-slate-100">
+                                    <label className="flex items-center gap-2 text-sm text-slate-800 font-medium cursor-pointer">
+                                        <input type="checkbox" checked={reportColumns.crop} onChange={() => toggleReportColumn('crop')} className="rounded text-emerald-600 focus:ring-emerald-500" />
+                                        Safra / Produto
+                                    </label>
+                                </div>
+                                 <div className="p-2 bg-slate-50 rounded border border-slate-100">
+                                    <label className="flex items-center gap-2 text-sm text-slate-800 font-medium cursor-pointer">
+                                        <input type="checkbox" checked={reportColumns.seller} onChange={() => toggleReportColumn('seller')} className="rounded text-emerald-600 focus:ring-emerald-500" />
+                                        Vendedor
+                                    </label>
+                                </div>
+                                <div className="p-2 bg-slate-50 rounded border border-slate-100">
+                                    <label className="flex items-center gap-2 text-sm text-slate-800 font-medium cursor-pointer">
+                                        <input type="checkbox" checked={reportColumns.buyer} onChange={() => toggleReportColumn('buyer')} className="rounded text-emerald-600 focus:ring-emerald-500" />
+                                        Comprador
+                                    </label>
+                                </div>
+                                <div className="p-2 bg-slate-50 rounded border border-slate-100">
+                                    <label className="flex items-center gap-2 text-sm text-slate-800 font-medium cursor-pointer">
+                                        <input type="checkbox" checked={reportColumns.volume} onChange={() => toggleReportColumn('volume')} className="rounded text-emerald-600 focus:ring-emerald-500" />
+                                        Volume
+                                    </label>
+                                </div>
+                                <div className="p-2 bg-slate-50 rounded border border-slate-100">
+                                    <label className="flex items-center gap-2 text-sm text-slate-800 font-medium cursor-pointer">
+                                        <input type="checkbox" checked={reportColumns.price} onChange={() => toggleReportColumn('price')} className="rounded text-emerald-600 focus:ring-emerald-500" />
+                                        Preço
+                                    </label>
+                                </div>
+                                <div className="p-2 bg-slate-50 rounded border border-slate-100">
+                                    <label className="flex items-center gap-2 text-sm text-slate-800 font-medium cursor-pointer">
+                                        <input type="checkbox" checked={reportColumns.status} onChange={() => toggleReportColumn('status')} className="rounded text-emerald-600 focus:ring-emerald-500" />
+                                        Status
+                                    </label>
+                                </div>
                              </div>
                         </div>
+
                     </div>
                     <div className="p-4 border-t border-slate-100 bg-slate-50 flex flex-col gap-2">
                         <button onClick={() => window.print()} className="w-full flex justify-center items-center px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-medium transition-colors">
@@ -847,7 +957,7 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
 
                 {/* Preview Area (A4) */}
                 <div className="flex-1 flex justify-center">
-                    <div id="printable-report" className="bg-white shadow-2xl w-full max-w-[210mm] min-h-[297mm] p-[10mm] mx-auto">
+                    <div id="printable-report" className="bg-white shadow-2xl w-full max-w-[210mm] min-h-[297mm] p-[10mm] mx-auto text-slate-800">
                         <div className="flex justify-between items-start border-b-2 border-emerald-800 pb-4 mb-6">
                             <div className="flex items-center gap-3">
                                 <div className="text-emerald-800">
@@ -901,7 +1011,7 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
                             </thead>
                             <tbody className="divide-y divide-slate-200">
                                 {reportData.map((c, idx) => (
-                                    <tr key={c.id} className="idx % 2 === 0 ? 'bg-white' : 'bg-slate-50'">
+                                    <tr key={c.id} className={idx % 2 === 0 ? 'bg-white text-slate-800' : 'bg-slate-50 text-slate-800'}>
                                         {reportColumns.date && <td className="p-2">{new Date(c.closingDate || c.createdAt).toLocaleDateString()}</td>}
                                         {reportColumns.contract && <td className="p-2 font-bold">{c.number}</td>}
                                         {reportColumns.crop && <td className="p-2">{c.crop} ({c.product.charAt(0)})</td>}
@@ -924,7 +1034,7 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
                                     </tr>
                                 ))}
                             </tbody>
-                            <tfoot className="bg-slate-100 border-t-2 border-slate-300 font-bold">
+                            <tfoot className="bg-slate-100 border-t-2 border-slate-300 font-bold text-slate-800">
                                 <tr>
                                     <td colSpan={Object.values(reportColumns).filter(v => v).length} className="p-2 text-right">
                                         Total Volume: {reportData.reduce((acc, c) => acc + c.totalBags, 0).toLocaleString()} scs
@@ -1292,7 +1402,7 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
                         className="w-full border rounded-lg p-3 h-24" 
                         placeholder="Detalhes adicionais, instruções de pagamento, qualidade..."
                         value={formData.observation || ''}
-                        onChange={(e) => setFormData({...formData, observation: e.target.value})}
+                        onChange={(e) => setFormData({...formData,observation: e.target.value})}
                     ></textarea>
                 </section>
                 
