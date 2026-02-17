@@ -38,7 +38,7 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
       price: true,
       status: true,
       freight: false,
-      location: false // NEW
+      location: false
   });
 
   // Report Specific Filters
@@ -50,8 +50,8 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
       status: '',
       freight: '',
       currency: '',
-      shipmentMonth: '', // NEW
-      shipmentYear: ''   // NEW
+      shipmentMonth: '',
+      shipmentYear: ''
   });
 
   const [viewingContract, setViewingContract] = useState<Contract | null>(null);
@@ -441,7 +441,7 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
              </div>
 
              {/* The Actual A4 Paper Content */}
-             <div className="bg-white w-full max-w-[210mm] min-h-[297mm] p-[10mm] mx-auto text-black font-sans text-[11px] leading-tight mt-16 print:mt-0 shadow-2xl print:shadow-none">
+             <div id="printable-single" className="bg-white w-full max-w-[210mm] min-h-[297mm] p-[10mm] mx-auto text-black font-sans text-[11px] leading-tight mt-16 print:mt-0 shadow-2xl print:shadow-none">
                  <div className="border border-black">
                     {/* Header */}
                     <div className="flex justify-between items-center p-2 border-b border-black h-28">
@@ -627,31 +627,44 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
       {/* Styles for Printing */}
       <style>{`
         @media print {
-          /* Hide EVERYTHING in the root */
-          #root {
-            display: none !important;
-          }
-          
-          /* Only show the portal children */
-          body > *:not(#root) {
-            display: block !important;
-          }
+            /* 1. Hide EVERYTHING by default */
+            body, #root, #root * {
+                visibility: hidden;
+                height: 0;
+                overflow: hidden;
+            }
 
-          body {
-            background: white !important;
-            overflow: visible !important;
-          }
+            /* 2. Show ONLY the specific printable areas */
+            #printable-report, #printable-report *,
+            #printable-single, #printable-single * {
+                visibility: visible;
+            }
 
-          @page {
-             size: A4;
-             margin: 0;
-          }
-          
-          /* Force colors */
-          * {
-            -webkit-print-color-adjust: exact !important;
-            print-color-adjust: exact !important;
-          }
+            /* 3. Position the printable container at the absolute top-left of the paper */
+            #printable-report, #printable-single {
+                position: absolute;
+                left: 0;
+                top: 0;
+                width: 100%;
+                margin: 0;
+                padding: 0;
+                background: white;
+                box-shadow: none !important;
+                max-width: none !important;
+                min-height: 100% !important;
+                z-index: 9999;
+            }
+
+            /* 4. Ensure no margins on the page */
+            @page {
+                size: A4;
+                margin: 0;
+            }
+            
+            /* 5. Hide specific UI elements that might have sneaked in */
+            .no-print {
+                display: none !important;
+            }
         }
       `}</style>
 
@@ -816,7 +829,7 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
              <div className="w-full max-w-[1200px] my-10 flex gap-6">
                 
                 {/* Configuration Sidebar */}
-                <div className="w-80 bg-white rounded-xl shadow-xl flex flex-col overflow-hidden shrink-0 sticky top-10">
+                <div className="w-80 bg-white rounded-xl shadow-xl flex flex-col overflow-hidden shrink-0 sticky top-10 no-print">
                     <div className="p-4 border-b border-slate-100 bg-slate-50">
                         <h3 className="font-bold text-slate-800 flex items-center gap-2">
                             <Settings2 className="w-5 h-5 text-emerald-600" />
