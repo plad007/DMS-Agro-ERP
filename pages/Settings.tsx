@@ -27,6 +27,17 @@ export const Settings: React.FC = () => {
         document.body.removeChild(link);
     };
 
+    // Helper to normalize dates (YYYY/MM/DD -> YYYY-MM-DD)
+    const normalizeDate = (val: any): any => {
+        if (typeof val === 'string' && val.includes('/')) {
+            // Check if it looks like a date
+            if (val.match(/^\d{4}\/\d{2}\/\d{2}$/)) {
+                return val.replace(/\//g, '-');
+            }
+        }
+        return val;
+    };
+
     // Parser CSV Robusto que suporta aspas (RFC 4180 básico)
     const parseCSVLine = (line: string): string[] => {
         const values: string[] = [];
@@ -79,6 +90,11 @@ export const Settings: React.FC = () => {
             headers.forEach((header, index) => {
                 let val: string | number | boolean = values[index];
                 
+                // Date Normalization
+                if (header.includes('date')) {
+                    val = normalizeDate(val);
+                }
+
                 // Simple type conversion
                 if (val && !isNaN(Number(val)) && 
                     header !== 'doc' && 
@@ -90,10 +106,7 @@ export const Settings: React.FC = () => {
                     header !== 'agency' &&
                     header !== 'state_insc' &&
                     header !== 'ticket_number' &&
-                    header !== 'closing_date' &&
-                    header !== 'payment_date' &&
-                    header !== 'shipment_start_date' &&
-                    header !== 'shipment_end_date' &&
+                    !header.includes('date') &&
                     header !== 'currency'
                 ) {
                      val = Number(val);
@@ -128,18 +141,14 @@ export const Settings: React.FC = () => {
                 if (data.length === 0) throw new Error("Arquivo vazio ou formato inválido");
 
                 if (table === 'farms') {
-                    // Logic specific for farms (lookup producer ID)
                     await bulkInsertFarms(data);
                 } else if (table === 'producers') {
-                    // Logic specific for producers (convert flat bank columns to JSON)
                     await bulkInsertProducers(data);
                 } else {
-                    // Generic Logic
                     await bulkInsert(table, data);
                 }
                 
                 setImportStatus({msg: `Sucesso! ${data.length} registros importados.`, type: 'success'});
-                // Reset input
                 event.target.value = '';
             } catch (error: any) {
                 console.error(error);
@@ -150,7 +159,7 @@ export const Settings: React.FC = () => {
                 } else if (errorMsg.includes('violates unique constraint')) {
                      errorMsg = "Erro de duplicidade: CPF/CNPJ ou Contrato já cadastrado.";
                 } else if (errorMsg.includes('invalid input syntax for type date')) {
-                     errorMsg = "Erro de Formatação: Você está tentando importar um texto (provavelmente 'ASSINADO' ou 'FOB') em uma coluna de Data. Verifique a ordem das colunas no seu CSV.";
+                     errorMsg = "Erro de Formatação: O sistema encontrou texto onde esperava Data. Verifique se o CABEÇALHO do seu CSV corresponde às colunas de dados.";
                 }
 
                 setImportStatus({msg: `Falha: ${errorMsg}`, type: 'error'});
