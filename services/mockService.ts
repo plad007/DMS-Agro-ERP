@@ -296,12 +296,18 @@ export const generateContractNumber = async (product: string, crop: string): Pro
 
 // --- BULK OPERATIONS FOR CSV IMPORT ---
 
+// Generic Insert (Modified to UPSERT)
 export const bulkInsert = async (table: string, data: any[]) => {
-    const { error } = await supabase.from(table).insert(data);
+    // Definir chave de conflito para permitir atualização
+    let options = {};
+    if (table === 'contracts') options = { onConflict: 'number' };
+    if (table === 'buyers') options = { onConflict: 'doc' };
+
+    const { error } = await supabase.from(table).upsert(data, options);
     if (error) throw error;
 };
 
-// Specialized Producer Insert (Handles Bank Details JSON)
+// Specialized Producer Insert (Handles Bank Details JSON + Deduplication + UPSERT)
 export const bulkInsertProducers = async (data: any[]) => {
     const normalize = (str: string) => str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
 
@@ -330,7 +336,17 @@ export const bulkInsertProducers = async (data: any[]) => {
         };
     });
 
-    const { error } = await supabase.from('producers').insert(formattedData);
+    // DEDUPLICAÇÃO: Remove registros repetidos (mesmo DOC) DENTRO do arquivo antes de enviar
+    const uniqueMap = new Map();
+    formattedData.forEach(item => {
+        if (item.doc) {
+            uniqueMap.set(item.doc, item);
+        }
+    });
+    const uniqueProducers = Array.from(uniqueMap.values());
+
+    // Usando UPSERT (Atualiza se existir, Insere se novo)
+    const { error } = await supabase.from('producers').upsert(uniqueProducers, { onConflict: 'doc' });
     if (error) throw error;
 };
 
@@ -354,21 +370,29 @@ export const bulkInsertFarms = async (csvData: any[]) => {
     const farmsToInsert: any[] = [];
     const errors: string[] = [];
 
+    // Deduplicação básica de fazendas no arquivo (Produtor + Nome)
+    const uniqueFarmCheck = new Set();
+
     csvData.forEach(row => {
         const producerId = docMap.get(row.producer_doc);
         if (producerId) {
-            farmsToInsert.push({
-                producer_id: producerId,
-                name: row.name,
-                address: row.address
-            });
+            const key = `${producerId}-${row.name}`;
+            if (!uniqueFarmCheck.has(key)) {
+                uniqueFarmCheck.add(key);
+                farmsToInsert.push({
+                    producer_id: producerId,
+                    name: row.name,
+                    address: row.address
+                });
+            }
         } else {
             errors.push(`Produtor com CPF/CNPJ ${row.producer_doc} não encontrado.`);
         }
     });
 
     if (farmsToInsert.length > 0) {
-        const { error: insertError } = await supabase.from('farms').insert(farmsToInsert);
+        // Tenta inserir. Se houver constraint de unicidade no banco, o ignoreDuplicates vai evitar o erro
+        const { error: insertError } = await supabase.from('farms').upsert(farmsToInsert, { ignoreDuplicates: true });
         if (insertError) throw insertError;
     }
 

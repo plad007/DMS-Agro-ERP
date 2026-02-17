@@ -13,8 +13,6 @@ const CSV_TEMPLATES = {
 export const Settings: React.FC = () => {
     const [importStatus, setImportStatus] = useState<{msg: string, type: 'success' | 'error' | ''}>({msg: '', type: ''});
     const [loading, setLoading] = useState(false);
-    
-    // Novo Estado para Codificação
     const [fileEncoding, setFileEncoding] = useState<'UTF-8' | 'ISO-8859-1'>('ISO-8859-1');
 
     const handleDownloadTemplate = (type: keyof typeof CSV_TEMPLATES) => {
@@ -27,18 +25,35 @@ export const Settings: React.FC = () => {
         document.body.removeChild(link);
     };
 
-    // Helper to normalize dates (YYYY/MM/DD -> YYYY-MM-DD)
-    const normalizeDate = (val: any): any => {
-        if (typeof val === 'string' && val.includes('/')) {
-            // Check if it looks like a date
-            if (val.match(/^\d{4}\/\d{2}\/\d{2}$/)) {
-                return val.replace(/\//g, '-');
-            }
+    // Validador Inteligente de Datas
+    const normalizeDate = (val: any): string | null => {
+        if (!val) return null;
+        let str = String(val).trim();
+        
+        // Remove aspas extras se houver, embora o parser já deva fazer isso
+        str = str.replace(/^["']|["']$/g, '');
+
+        // Formato ISO: YYYY-MM-DD ou YYYY/MM/DD
+        if (str.match(/^\d{4}[\/\-]\d{2}[\/\-]\d{2}$/)) {
+            return str.replace(/\//g, '-');
         }
-        return val;
+        
+        // Formato BR: DD/MM/YYYY
+        if (str.match(/^\d{2}[\/\-]\d{2}[\/\-]\d{4}$/)) {
+            const parts = str.replace(/\//g, '-').split('-');
+            return `${parts[2]}-${parts[1]}-${parts[0]}`; // Converte para YYYY-MM-DD
+        }
+
+        // Formato BR Curto: DD/MM/YY (Ex: 02/06/23)
+        if (str.match(/^\d{2}[\/\-]\d{2}[\/\-]\d{2}$/)) {
+            const parts = str.replace(/\//g, '-').split('-');
+            return `20${parts[2]}-${parts[1]}-${parts[0]}`; // Assume ano 20XX
+        }
+
+        // Se chegou aqui, é texto (ex: "72h após embarque") -> Retorna null para não quebrar o banco
+        return null;
     };
 
-    // Parser CSV Robusto que suporta aspas (RFC 4180 básico)
     const parseCSVLine = (line: string): string[] => {
         const values: string[] = [];
         let current = '';
@@ -49,15 +64,12 @@ export const Settings: React.FC = () => {
             
             if (char === '"') {
                 if (inQuote && line[i + 1] === '"') {
-                    // Aspas duplas escapadas ("")
                     current += '"';
                     i++;
                 } else {
-                    // Alterna estado de citação
                     inQuote = !inQuote;
                 }
             } else if (char === ',' && !inQuote) {
-                // Fim do campo
                 values.push(current.trim());
                 current = '';
             } else {
@@ -72,7 +84,6 @@ export const Settings: React.FC = () => {
         const rows = text.trim().split('\n');
         if (rows.length < 2) return [];
 
-        // Parse headers using the robust parser
         const headers = parseCSVLine(rows[0]).map(h => h.trim());
         const data = [];
 
@@ -81,26 +92,37 @@ export const Settings: React.FC = () => {
             if (!row) continue;
             
             const values = parseCSVLine(row);
-            
-            // Skip rows that look completely broken/empty
             if (values.length < 2) continue;
 
             const obj: any = {};
-            
+            let observationNote = ''; // Buffer para guardar erros de data
+
             headers.forEach((header, index) => {
-                let val: string | number | boolean = values[index];
+                let val: any = values[index];
                 
-                // Date Normalization
-                if (header.includes('date')) {
-                    val = normalizeDate(val);
+                // Limpeza final de aspas
+                if (typeof val === 'string' && val.startsWith('"') && val.endsWith('"')) {
+                    val = val.slice(1, -1);
                 }
 
-                // Simple type conversion
+                // Tratamento Especial para Datas
+                if (header.includes('date')) {
+                    const cleanDate = normalizeDate(val);
+                    if (val && !cleanDate) {
+                        // É texto em campo de data! Move para observação.
+                        observationNote += ` [${header}: ${val}]`;
+                        val = null; 
+                    } else {
+                        val = cleanDate;
+                    }
+                }
+
+                // Conversão Numérica (se for número válido)
                 if (val && !isNaN(Number(val)) && 
                     header !== 'doc' && 
                     header !== 'producer_doc' && 
-                    header !== 'seller_doc' && // Force String
-                    header !== 'buyer_doc' && // Force String
+                    header !== 'seller_doc' && 
+                    header !== 'buyer_doc' && 
                     header !== 'number' &&
                     header !== 'account' &&
                     header !== 'agency' &&
@@ -112,13 +134,14 @@ export const Settings: React.FC = () => {
                      val = Number(val);
                 }
                 
-                // Remove potential quotes remaining if format was weird
-                if (typeof val === 'string' && val.startsWith('"') && val.endsWith('"')) {
-                    val = val.slice(1, -1);
-                }
-
                 obj[header] = val;
             });
+
+            // Se houve datas inválidas (textos), salva na observação
+            if (observationNote) {
+                obj.observation = (obj.observation || '') + observationNote;
+            }
+
             data.push(obj);
         }
         return data;
@@ -148,7 +171,7 @@ export const Settings: React.FC = () => {
                     await bulkInsert(table, data);
                 }
                 
-                setImportStatus({msg: `Sucesso! ${data.length} registros importados.`, type: 'success'});
+                setImportStatus({msg: `Sucesso! ${data.length} registros importados/atualizados.`, type: 'success'});
                 event.target.value = '';
             } catch (error: any) {
                 console.error(error);
@@ -157,9 +180,9 @@ export const Settings: React.FC = () => {
                 if (errorMsg.includes('violates check constraint')) {
                      errorMsg = "Erro de validação: Um dos campos (provavelmente Funrural ou Tipo) contém um valor inválido.";
                 } else if (errorMsg.includes('violates unique constraint')) {
-                     errorMsg = "Erro de duplicidade: CPF/CNPJ ou Contrato já cadastrado.";
+                     errorMsg = "Erro de duplicidade: Verifique se os dados chave (Número Contrato ou CPF) estão corretos.";
                 } else if (errorMsg.includes('invalid input syntax for type date')) {
-                     errorMsg = "Erro de Formatação: O sistema encontrou texto onde esperava Data. Verifique se o CABEÇALHO do seu CSV corresponde às colunas de dados.";
+                     errorMsg = "Erro de Formatação: O banco rejeitou uma data inválida. Verifique se o CSV tem textos em colunas de data que o sistema não conseguiu limpar.";
                 }
 
                 setImportStatus({msg: `Falha: ${errorMsg}`, type: 'error'});
@@ -168,7 +191,6 @@ export const Settings: React.FC = () => {
             }
         };
 
-        // CRITICAL FIX: Read with specific encoding to handle accents
         reader.readAsText(file, fileEncoding);
     };
 
@@ -186,7 +208,6 @@ export const Settings: React.FC = () => {
                         </div>
                     </div>
 
-                    {/* Encoding Selector */}
                     <div className="flex items-center gap-2 bg-slate-50 p-2 rounded-lg border border-slate-200">
                         <Settings2 className="w-4 h-4 text-slate-500" />
                         <label className="text-xs font-bold text-slate-600">Codificação:</label>
@@ -209,7 +230,6 @@ export const Settings: React.FC = () => {
                 )}
 
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                    
                     {/* PRODUCERS CARD */}
                     <div className="border border-slate-200 rounded-xl p-5 hover:border-emerald-200 transition-colors">
                         <h3 className="font-bold text-slate-800 mb-2">1. Produtores</h3>
@@ -217,15 +237,11 @@ export const Settings: React.FC = () => {
                             Importe cadastros principais. Inclui colunas para dados bancários básicos.
                         </p>
                         <div className="flex flex-col gap-2">
-                             <button 
-                                onClick={() => handleDownloadTemplate('producers')}
-                                className="flex items-center justify-center gap-2 w-full py-2 bg-slate-50 text-slate-600 text-xs font-bold uppercase rounded border border-slate-200 hover:bg-slate-100"
-                             >
+                             <button onClick={() => handleDownloadTemplate('producers')} className="flex items-center justify-center gap-2 w-full py-2 bg-slate-50 text-slate-600 text-xs font-bold uppercase rounded border border-slate-200 hover:bg-slate-100">
                                 <Download className="w-4 h-4" /> Baixar Modelo
                             </button>
                             <label className={`flex items-center justify-center gap-2 w-full py-2 bg-emerald-600 text-white text-xs font-bold uppercase rounded cursor-pointer hover:bg-emerald-700 ${loading ? 'opacity-50 pointer-events-none' : ''}`}>
-                                <Upload className="w-4 h-4" /> 
-                                {loading ? '...' : 'Importar CSV'}
+                                <Upload className="w-4 h-4" /> {loading ? '...' : 'Importar CSV'}
                                 <input type="file" accept=".csv" className="hidden" onChange={(e) => handleImport('producers', e)} disabled={loading} />
                             </label>
                         </div>
@@ -240,15 +256,11 @@ export const Settings: React.FC = () => {
                             Vincula fazendas aos produtores pelo CPF/CNPJ. Importe os produtores antes.
                         </p>
                         <div className="flex flex-col gap-2">
-                             <button 
-                                onClick={() => handleDownloadTemplate('farms')}
-                                className="flex items-center justify-center gap-2 w-full py-2 bg-slate-50 text-slate-600 text-xs font-bold uppercase rounded border border-slate-200 hover:bg-slate-100"
-                             >
+                             <button onClick={() => handleDownloadTemplate('farms')} className="flex items-center justify-center gap-2 w-full py-2 bg-slate-50 text-slate-600 text-xs font-bold uppercase rounded border border-slate-200 hover:bg-slate-100">
                                 <Download className="w-4 h-4" /> Baixar Modelo
                             </button>
                             <label className={`flex items-center justify-center gap-2 w-full py-2 bg-emerald-600 text-white text-xs font-bold uppercase rounded cursor-pointer hover:bg-emerald-700 ${loading ? 'opacity-50 pointer-events-none' : ''}`}>
-                                <Upload className="w-4 h-4" /> 
-                                {loading ? '...' : 'Importar CSV'}
+                                <Upload className="w-4 h-4" /> {loading ? '...' : 'Importar CSV'}
                                 <input type="file" accept=".csv" className="hidden" onChange={(e) => handleImport('farms', e)} disabled={loading} />
                             </label>
                         </div>
@@ -261,15 +273,11 @@ export const Settings: React.FC = () => {
                             Importe tradings e fábricas. Campos: razão social, cnpj, inscrição.
                         </p>
                         <div className="flex flex-col gap-2">
-                             <button 
-                                onClick={() => handleDownloadTemplate('buyers')}
-                                className="flex items-center justify-center gap-2 w-full py-2 bg-slate-50 text-slate-600 text-xs font-bold uppercase rounded border border-slate-200 hover:bg-slate-100"
-                             >
+                             <button onClick={() => handleDownloadTemplate('buyers')} className="flex items-center justify-center gap-2 w-full py-2 bg-slate-50 text-slate-600 text-xs font-bold uppercase rounded border border-slate-200 hover:bg-slate-100">
                                 <Download className="w-4 h-4" /> Baixar Modelo
                             </button>
                              <label className={`flex items-center justify-center gap-2 w-full py-2 bg-blue-600 text-white text-xs font-bold uppercase rounded cursor-pointer hover:bg-blue-700 ${loading ? 'opacity-50 pointer-events-none' : ''}`}>
-                                <Upload className="w-4 h-4" /> 
-                                {loading ? '...' : 'Importar CSV'}
+                                <Upload className="w-4 h-4" /> {loading ? '...' : 'Importar CSV'}
                                 <input type="file" accept=".csv" className="hidden" onChange={(e) => handleImport('buyers', e)} disabled={loading} />
                             </label>
                         </div>
@@ -282,31 +290,25 @@ export const Settings: React.FC = () => {
                             Importe seu legado de contratos. Certifique-se que Vendedor/Comprador existam.
                         </p>
                         <div className="flex flex-col gap-2">
-                             <button 
-                                onClick={() => handleDownloadTemplate('contracts')}
-                                className="flex items-center justify-center gap-2 w-full py-2 bg-slate-50 text-slate-600 text-xs font-bold uppercase rounded border border-slate-200 hover:bg-slate-100"
-                             >
+                             <button onClick={() => handleDownloadTemplate('contracts')} className="flex items-center justify-center gap-2 w-full py-2 bg-slate-50 text-slate-600 text-xs font-bold uppercase rounded border border-slate-200 hover:bg-slate-100">
                                 <Download className="w-4 h-4" /> Baixar Modelo
                             </button>
                              <label className={`flex items-center justify-center gap-2 w-full py-2 bg-amber-600 text-white text-xs font-bold uppercase rounded cursor-pointer hover:bg-amber-700 ${loading ? 'opacity-50 pointer-events-none' : ''}`}>
-                                <Upload className="w-4 h-4" /> 
-                                {loading ? '...' : 'Importar CSV'}
+                                <Upload className="w-4 h-4" /> {loading ? '...' : 'Importar CSV'}
                                 <input type="file" accept=".csv" className="hidden" onChange={(e) => handleImport('contracts', e)} disabled={loading} />
                             </label>
                         </div>
                     </div>
-
                 </div>
 
                 <div className="mt-8 p-4 bg-yellow-50 rounded-lg border border-yellow-100 text-sm text-yellow-800">
                     <h4 className="font-bold flex items-center gap-2 mb-2"><AlertCircle className="w-4 h-4"/> Dicas para evitar erros</h4>
                     <ul className="list-disc pl-5 space-y-1">
                         <li>Se os acentos aparecerem errados, mude a opção <strong>Codificação</strong> lá em cima para <strong>Excel / Windows</strong>.</li>
-                        <li>Se o endereço contiver vírgulas (ex: "Rua A, 123"), o Excel geralmente coloca aspas automaticamente. Se der erro, verifique isso.</li>
+                        <li>Datas como <strong>"Pgto em 30 dias"</strong> ou <strong>"A Combinar"</strong> serão movidas para o campo <strong>Observações</strong> automaticamente.</li>
                         <li>Não use pontos de milhar em números, apenas ponto para decimais (Ex: 1200.50).</li>
                     </ul>
                 </div>
-
             </div>
         </div>
     );
