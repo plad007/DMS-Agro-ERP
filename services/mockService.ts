@@ -305,6 +305,27 @@ export const bulkInsert = async (table: string, data: any[]) => {
 
     let dataToInsert = data;
 
+    // FIX SCHEMA: Remove closing_date if exists in CSV to prevent error
+    if (table === 'contracts') {
+        dataToInsert = dataToInsert.map(item => {
+            const { closing_date, ...rest } = item;
+            // Map closing_date to created_at if created_at is not provided, preserving the business date
+            if (closing_date && !rest.created_at) {
+                rest.created_at = closing_date;
+            }
+            
+            // REGRA INTELIGENTE: Se tem Preço Final, está FIXADO.
+            const price = parseFloat(item.final_price);
+            const isFixed = !isNaN(price) && price > 0;
+            
+            return {
+                ...rest,
+                closing_date, // Garante que vai para a coluna correta
+                is_fixed: isFixed // Define status de fixação automaticamente
+            };
+        });
+    }
+
     // 2. Se houver chave, deduplicar o array ANTES de enviar para o banco
     if (conflictKey) {
         const uniqueMap = new Map();
