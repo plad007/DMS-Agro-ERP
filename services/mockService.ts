@@ -1,4 +1,5 @@
 
+
 import { supabase } from './supabase';
 import { Contract, Shipment, ContractStatus, PricingMode, MarketData, Producer, Buyer, Farm } from '../types';
 
@@ -51,9 +52,9 @@ const mapContractFromDB = (c: any): Contract => ({
     pricingMode: c.pricing_mode,
     isFixed: c.is_fixed,
     basePrice: c.base_price,
-    cbot_component: c.cbot_component,
-    basis_component: c.basis_component,
-    cost_component: c.cost_component,
+    cbotComponent: c.cbot_component,
+    basisComponent: c.basis_component,
+    costComponent: c.cost_component,
     finalPrice: c.final_price,
     commissionPerBag: c.commission_per_bag,
     paymentDate: c.payment_date,
