@@ -1,20 +1,28 @@
+
 import React, { useState, useEffect } from 'react';
 import { Layout } from './components/Layout';
 import { Dashboard } from './pages/Dashboard';
 import { Contracts } from './pages/Contracts';
 import { Logistics } from './pages/Logistics';
 import { Registries } from './pages/Registries';
+import { Reports } from './pages/Reports'; // NEW IMPORT
 import { Settings } from './pages/Settings';
 import { getContracts, getMarketData, getShipments } from './services/mockService';
 import { Contract, Shipment, MarketData } from './types';
 
 export default function App() {
-  const [activePage, setActivePage] = useState('dashboard');
+  const activePageStorage = sessionStorage.getItem('dms_active_page') || 'dashboard';
+  const [activePage, setActivePage] = useState(activePageStorage);
   
   const [contracts, setContracts] = useState<Contract[]>([]);
   const [shipments, setShipments] = useState<Shipment[]>([]);
   const [marketData, setMarketData] = useState<MarketData>({ usd: 0, cbotSoy: 0, cbotCorn: 0 });
   const [loading, setLoading] = useState(true);
+
+  const handleNavigate = (page: string) => {
+      setActivePage(page);
+      sessionStorage.setItem('dms_active_page', page);
+  };
 
   const refreshData = async () => {
     setLoading(true);
@@ -52,6 +60,8 @@ export default function App() {
         return <Dashboard marketData={marketData} contracts={contracts} />;
       case 'contracts':
         return <Contracts contracts={contracts} marketData={marketData} onUpdate={refreshData} />;
+      case 'reports':
+        return <Reports contracts={contracts} />;
       case 'logistics':
         return <Logistics contracts={contracts} shipments={shipments} onUpdate={refreshData} />;
       case 'registries':
@@ -64,7 +74,7 @@ export default function App() {
   };
 
   return (
-    <Layout activePage={activePage} onNavigate={setActivePage}>
+    <Layout activePage={activePage} onNavigate={handleNavigate}>
       {renderContent()}
     </Layout>
   );

@@ -117,7 +117,8 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
       price: true,
       status: true,
       freight: false,
-      location: false
+      location: false, // Default false
+      shipmentPeriod: false // Default false
   });
 
   // Report Specific Filters
@@ -723,6 +724,7 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
                         {reportColumns.price && <th className="p-2 font-bold text-right">Preço</th>}
                         {reportColumns.status && <th className="p-2 font-bold text-center">Status</th>}
                         {reportColumns.freight && <th className="p-2 font-bold">Frete</th>}
+                        {reportColumns.shipmentPeriod && <th className="p-2 font-bold">Período</th>}
                         {reportColumns.location && <th className="p-2 font-bold">Local Emb.</th>}
                     </tr>
                 </thead>
@@ -748,6 +750,7 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
                                 </td>
                             )}
                             {reportColumns.freight && <td className="p-2 text-[10px]">{c.freightType}</td>}
+                            {reportColumns.shipmentPeriod && <td className="p-2 text-[10px]">{getPeriodDisplay(c.shipmentStartDate, c.shipmentEndDate)}</td>}
                             {reportColumns.location && <td className="p-2 text-[10px] truncate max-w-[100px]">{c.pickupLocation}</td>}
                         </tr>
                     ))}
@@ -1098,6 +1101,12 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
                                     <label className="flex items-center gap-2 text-sm text-slate-800 font-medium cursor-pointer">
                                         <input type="checkbox" checked={reportColumns.location} onChange={() => toggleReportColumn('location')} className="rounded text-emerald-600 focus:ring-emerald-500" />
                                         Local de Embarque
+                                    </label>
+                                </div>
+                                <div className="p-2 bg-slate-50 rounded border border-slate-100">
+                                    <label className="flex items-center gap-2 text-sm text-slate-800 font-medium cursor-pointer">
+                                        <input type="checkbox" checked={reportColumns.shipmentPeriod} onChange={() => toggleReportColumn('shipmentPeriod')} className="rounded text-emerald-600 focus:ring-emerald-500" />
+                                        Período Embarque
                                     </label>
                                 </div>
                              </div>
