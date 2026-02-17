@@ -37,7 +37,8 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
       volume: true,
       price: true,
       status: true,
-      freight: false
+      freight: false,
+      location: false // NEW
   });
 
   // Report Specific Filters
@@ -48,7 +49,9 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
       buyer: '',
       status: '',
       freight: '',
-      currency: ''
+      currency: '',
+      shipmentMonth: '', // NEW
+      shipmentYear: ''   // NEW
   });
 
   const [viewingContract, setViewingContract] = useState<Contract | null>(null);
@@ -343,6 +346,18 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
           if (reportFilters.status && c.status !== reportFilters.status) return false;
           if (reportFilters.freight && c.freightType !== reportFilters.freight) return false;
           if (reportFilters.currency && c.currency !== reportFilters.currency) return false;
+          
+          // Filter by Shipment Period
+          if (reportFilters.shipmentYear) {
+              const start = new Date(c.shipmentStartDate);
+              if (start.getUTCFullYear().toString() !== reportFilters.shipmentYear) return false;
+          }
+          if (reportFilters.shipmentMonth) {
+              const start = new Date(c.shipmentStartDate);
+              // shipmentMonth is "0" for Jan, "1" for Feb... same as getUTCMonth
+              if (start.getUTCMonth().toString() !== reportFilters.shipmentMonth) return false;
+          }
+
           return true;
       });
   }, [filteredContracts, reportFilters]);
@@ -795,8 +810,8 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
           document.body
       )}
 
-      {/* REPORT GENERATION MODAL */}
-      {isReportModalOpen && (
+      {/* REPORT GENERATION MODAL - MOVED TO PORTAL TO FIX PRINTING ISSUE */}
+      {isReportModalOpen && createPortal(
         <div className="fixed inset-0 z-[100] flex bg-slate-900/80 backdrop-blur-sm no-print items-start justify-center overflow-y-auto">
              <div className="w-full max-w-[1200px] my-10 flex gap-6">
                 
@@ -816,7 +831,7 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
                             <div className="flex justify-between items-center mb-3">
                                 <p className="text-xs font-bold text-slate-400 uppercase">Filtros de Dados</p>
                                 <button 
-                                    onClick={() => setReportFilters({product:'', crop:'', seller:'', buyer:'', status:'', freight:'', currency:''})}
+                                    onClick={() => setReportFilters({product:'', crop:'', seller:'', buyer:'', status:'', freight:'', currency:'', shipmentMonth: '', shipmentYear: ''})}
                                     className="text-[10px] text-blue-600 hover:underline"
                                 >
                                     Limpar
@@ -833,6 +848,28 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
                                         value={reportFilters.crop}
                                         onChange={e => setReportFilters({...reportFilters, crop: e.target.value})}
                                     />
+                                </div>
+                                {/* Período de Embarque (NEW) */}
+                                <div>
+                                    <label className="text-xs font-semibold text-slate-600">Período de Embarque</label>
+                                    <div className="flex gap-2">
+                                        <select 
+                                            className="w-full text-xs border border-slate-300 rounded p-1.5 bg-white"
+                                            value={reportFilters.shipmentMonth}
+                                            onChange={e => setReportFilters({...reportFilters, shipmentMonth: e.target.value})}
+                                        >
+                                            <option value="">Mês</option>
+                                            {MONTHS.map((m, i) => <option key={i} value={i.toString()}>{m}</option>)}
+                                        </select>
+                                        <select 
+                                            className="w-full text-xs border border-slate-300 rounded p-1.5 bg-white"
+                                            value={reportFilters.shipmentYear}
+                                            onChange={e => setReportFilters({...reportFilters, shipmentYear: e.target.value})}
+                                        >
+                                            <option value="">Ano</option>
+                                            {YEARS.map(y => <option key={y} value={y.toString()}>{y}</option>)}
+                                        </select>
+                                    </div>
                                 </div>
                                 {/* Produto */}
                                 <div>
@@ -941,6 +978,12 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
                                         Status
                                     </label>
                                 </div>
+                                <div className="p-2 bg-slate-50 rounded border border-slate-100">
+                                    <label className="flex items-center gap-2 text-sm text-slate-800 font-medium cursor-pointer">
+                                        <input type="checkbox" checked={reportColumns.location} onChange={() => toggleReportColumn('location')} className="rounded text-emerald-600 focus:ring-emerald-500" />
+                                        Local de Embarque
+                                    </label>
+                                </div>
                              </div>
                         </div>
 
@@ -1007,6 +1050,7 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
                                     {reportColumns.price && <th className="p-2 font-bold text-right">Preço</th>}
                                     {reportColumns.status && <th className="p-2 font-bold text-center">Status</th>}
                                     {reportColumns.freight && <th className="p-2 font-bold">Frete</th>}
+                                    {reportColumns.location && <th className="p-2 font-bold">Local Emb.</th>}
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-200">
@@ -1031,6 +1075,7 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
                                             </td>
                                         )}
                                         {reportColumns.freight && <td className="p-2 text-[10px]">{c.freightType}</td>}
+                                        {reportColumns.location && <td className="p-2 text-[10px] truncate max-w-[100px]">{c.pickupLocation}</td>}
                                     </tr>
                                 ))}
                             </tbody>
@@ -1045,7 +1090,8 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
                     </div>
                 </div>
              </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Contract EDIT/CREATE Modal (Existing) */}
