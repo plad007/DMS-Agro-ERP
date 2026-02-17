@@ -117,8 +117,8 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
       price: true,
       status: true,
       freight: false,
-      location: false, // Default false
-      shipmentPeriod: false // Default false
+      location: true, // Default true now based on feedback
+      shipmentPeriod: true // Default true now based on feedback
   });
 
   // Report Specific Filters
@@ -751,7 +751,7 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
                             )}
                             {reportColumns.freight && <td className="p-2 text-[10px]">{c.freightType}</td>}
                             {reportColumns.shipmentPeriod && <td className="p-2 text-[10px]">{getPeriodDisplay(c.shipmentStartDate, c.shipmentEndDate)}</td>}
-                            {reportColumns.location && <td className="p-2 text-[10px] truncate max-w-[100px]">{c.pickupLocation}</td>}
+                            {reportColumns.location && <td className="p-2 text-[10px] whitespace-normal max-w-[150px]">{c.pickupLocation}</td>}
                         </tr>
                     ))}
                 </tbody>
