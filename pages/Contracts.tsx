@@ -1,8 +1,8 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { Plus, Search, Filter, Download, FileSpreadsheet, Lock, Unlock, Edit2, Share2, CheckCircle, FileText, Calendar, MapPin, DollarSign, Truck, Calculator, Eye, Printer, X, Sprout, FileBarChart, Settings2, FileDown, Send } from 'lucide-react';
-import { Contract, PricingMode, ContractStatus, MarketData, Producer, Buyer, FreightType } from '../types';
+import { Plus, Search, Filter, Download, FileSpreadsheet, Lock, Unlock, Edit2, Share2, CheckCircle, FileText, Calendar, MapPin, DollarSign, Truck, Calculator, Eye, Printer, X, Sprout, FileBarChart, Settings2, FileDown, Send, Banknote } from 'lucide-react';
+import { Contract, PricingMode, ContractStatus, MarketData, Producer, Buyer, FreightType, BankAccount } from '../types';
 import { generateContractNumber, saveContract, getProducers, getBuyers } from '../services/mockService';
 
 interface ContractsProps {
@@ -22,8 +22,13 @@ const MONTHS = [
 const YEARS = [2024, 2025, 2026, 2027, 2028];
 
 // --- COMPONENTE DE IMPRESSÃO ISOLADO (IFRAME) ---
-// Isso resolve o problema da página em branco isolando o CSS da impressão
-const PrintIsolation = ({ children, onClose, title }: { children: React.ReactNode, onClose: () => void, title: string }) => {
+interface PrintIsolationProps {
+    children: React.ReactNode;
+    onClose: () => void;
+    title: string;
+}
+
+const PrintIsolation = ({ children, onClose, title }: PrintIsolationProps) => {
     const [contentRef, setContentRef] = useState<HTMLIFrameElement | null>(null);
     const [mountNode, setMountNode] = useState<HTMLElement | null>(null);
 
@@ -149,6 +154,7 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
   // Custom Local State for Form Interaction
   const [isNewLocation, setIsNewLocation] = useState(false);
   const [availableLocations, setAvailableLocations] = useState<{name: string, id?: string}[]>([]);
+  const [availableAccounts, setAvailableAccounts] = useState<BankAccount[]>([]);
 
   // Shipment Period State (UI Only)
   const [isImmediate, setIsImmediate] = useState(false);
@@ -257,8 +263,11 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
         setAvailableLocations(seller.farms.map(f => ({name: f.name, id: f.id})));
         const exists = seller.farms.some(f => f.name === contract.pickupLocation);
         setIsNewLocation(!exists);
+        // Bank Accounts Logic
+        setAvailableAccounts(seller.bankDetails || []);
     } else {
         setAvailableLocations([]);
+        setAvailableAccounts([]);
         setIsNewLocation(true);
     }
     
@@ -296,6 +305,7 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
     setEndFortnight('2');
 
     setAvailableLocations([]);
+    setAvailableAccounts([]);
     setIsNewLocation(false);
     setIsModalOpen(true);
   };
@@ -303,20 +313,41 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
   const handleSellerChange = (sellerName: string) => {
     const seller = producersList.find(p => p.name === sellerName);
     // AUTO LINK BY DOCUMENT
-    setFormData({...formData, sellerName, sellerDoc: seller?.doc});
+    setFormData({...formData, sellerName, sellerDoc: seller?.doc, sellerBankDetails: undefined});
     
     if (seller) {
         const locations = seller.farms.map(f => ({name: f.name, id: f.id}));
         setAvailableLocations(locations);
+        
+        // Load Banks
+        const banks = seller.bankDetails || [];
+        setAvailableAccounts(banks);
+        
+        // Auto select first bank if exists
+        const defaultBank = banks.length > 0 ? banks[0] : undefined;
+        
         if (locations.length > 0) {
-            setFormData(prev => ({...prev, sellerName, sellerDoc: seller.doc, pickupLocation: locations[0].name}));
+            setFormData(prev => ({
+                ...prev, 
+                sellerName, 
+                sellerDoc: seller.doc, 
+                pickupLocation: locations[0].name,
+                sellerBankDetails: defaultBank
+            }));
             setIsNewLocation(false);
         } else {
             setIsNewLocation(true);
-            setFormData(prev => ({...prev, sellerName, sellerDoc: seller.doc, pickupLocation: ''}));
+            setFormData(prev => ({
+                ...prev, 
+                sellerName, 
+                sellerDoc: seller.doc, 
+                pickupLocation: '',
+                sellerBankDetails: defaultBank
+            }));
         }
     } else {
         setAvailableLocations([]);
+        setAvailableAccounts([]);
     }
   };
 
@@ -393,6 +424,7 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
       paymentDate: paymentDate,
       commissionDueDate: commissionDate.toISOString().split('T')[0],
       closingDate: formData.closingDate!,
+      sellerBankDetails: formData.sellerBankDetails, // Saves selected account
       status: formData.status as ContractStatus,
       createdAt: editingContract?.createdAt || new Date().toISOString()
     };
@@ -493,6 +525,9 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
     const seller = getFullSeller(contract.sellerName);
     const buyer = getFullBuyer(contract.buyerName);
 
+    // Use stored bank details or fallback to first available from producer
+    const bank = contract.sellerBankDetails || (seller?.bankDetails && seller.bankDetails.length > 0 ? seller.bankDetails[0] : undefined);
+
     return (
         <div className="bg-white w-full max-w-[210mm] min-h-[297mm] p-[10mm] mx-auto text-black font-sans text-[11px] leading-tight">
              <div className="border border-black">
@@ -591,13 +626,13 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
                 <div className="p-1 border-b border-black text-xs">
                     <div className="grid grid-cols-4 gap-2 mb-1">
                         <div><span className="font-bold">Data Pagtº:</span> {new Date(contract.paymentDate).toLocaleDateString('pt-BR', {timeZone: 'UTC'})}</div>
-                        <div><span className="font-bold">Banco:</span> {seller?.bankDetails?.bankName}</div>
-                        <div><span className="font-bold">Ag:</span> {seller?.bankDetails?.agency}</div>
-                        <div><span className="font-bold">C.C.:</span> {seller?.bankDetails?.account}</div>
+                        <div><span className="font-bold">Banco:</span> {bank?.bankName || '-'}</div>
+                        <div><span className="font-bold">Ag:</span> {bank?.agency || '-'}</div>
+                        <div><span className="font-bold">C.C.:</span> {bank?.account || '-'}</div>
                     </div>
                     <div className="grid grid-cols-[80px_1fr_120px_1fr]">
-                        <span className="font-bold">Favorecido:</span> <span className="uppercase">{seller?.bankDetails?.holder}</span>
-                        <span className="font-bold text-right pr-2">CPF / CNPJ:</span> <span>{seller?.bankDetails?.holderDoc}</span>
+                        <span className="font-bold">Favorecido:</span> <span className="uppercase">{bank?.holder || '-'}</span>
+                        <span className="font-bold text-right pr-2">CPF / CNPJ:</span> <span>{bank?.holderDoc || '-'}</span>
                     </div>
                 </div>
 
@@ -674,6 +709,7 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
   };
 
   const ReportDocument = ({ data }: { data: Contract[] }) => {
+      // Report Document remains unchanged for list view
       return (
         <div className="bg-white w-full max-w-[210mm] min-h-[297mm] p-[10mm] mx-auto text-slate-800">
             <div className="flex justify-between items-start border-b-2 border-emerald-800 pb-4 mb-6">
@@ -770,7 +806,7 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
   return (
     <div className="space-y-6">
       
-      {/* Action Bar */}
+      {/* Action Bar (Unchanged) */}
       <div className="flex flex-col sm:flex-row justify-between gap-4">
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
@@ -802,7 +838,7 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
         </div>
       </div>
 
-      {/* Grid */}
+      {/* Grid (Unchanged) */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm text-slate-600">
@@ -929,9 +965,10 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
           </PrintIsolation>
       )}
 
-      {/* REPORT GENERATION MODAL */}
+      {/* REPORT GENERATION MODAL (Unchanged) */}
       {isReportModalOpen && createPortal(
         <div className="fixed inset-0 z-[100] flex bg-slate-900/80 backdrop-blur-sm items-start justify-center overflow-y-auto">
+             {/* ... Report Modal Content ... */}
              <div className="w-full max-w-[1200px] my-10 flex gap-6">
                 
                 {/* Configuration Sidebar */}
@@ -945,7 +982,7 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
                     
                     <div className="p-4 flex-1 overflow-y-auto max-h-[70vh] space-y-6">
                         
-                        {/* DATA FILTERS SECTION - ADDED */}
+                        {/* DATA FILTERS SECTION */}
                         <div>
                             <div className="flex justify-between items-center mb-3">
                                 <p className="text-xs font-bold text-slate-400 uppercase">Filtros de Dados</p>
@@ -956,7 +993,8 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
                                     Limpar
                                 </button>
                             </div>
-                            <div className="space-y-3">
+                            {/* ... Filters Inputs ... */}
+                             <div className="space-y-3">
                                 {/* Safra */}
                                 <div>
                                     <label className="text-xs font-semibold text-slate-600">Safra</label>
@@ -1260,6 +1298,7 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
                     <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wide mb-4">Preço e Pagamento</h3>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                         <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
+                            {/* Pricing Mode UI ... (omitted for brevity, unchanged) */}
                             <div className="flex justify-between mb-4">
                                 <label className="text-sm font-bold text-slate-700">Modo de Precificação</label>
                                 <div className="flex bg-white rounded p-0.5 border border-slate-200">
@@ -1319,29 +1358,58 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
                              </div>
                         </div>
 
-                        {/* Payment Terms */}
-                        <div className="md:col-span-2 grid grid-cols-2 gap-4">
-                             <div>
-                                <label className="block text-sm font-medium text-slate-700 mb-1">Data Pagamento</label>
-                                <input type="date" className="w-full border rounded-lg p-2.5" value={formData.paymentDate || ''} onChange={(e) => setFormData({...formData, paymentDate: e.target.value})} />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-slate-700 mb-1">Comissão (R$/sc)</label>
-                                <div className="relative">
-                                    <input type="number" className="w-full border rounded-lg p-2.5 pl-8" value={formData.commissionPerBag || ''} onChange={(e) => setFormData({...formData, commissionPerBag: parseFloat(e.target.value)})} />
-                                    <DollarSign className="w-4 h-4 text-slate-400 absolute left-2.5 top-3.5" />
+                        {/* Payment Terms & Bank Selection */}
+                        <div className="md:col-span-2 space-y-4">
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 mb-1">Data Pagamento</label>
+                                    <input type="date" className="w-full border rounded-lg p-2.5" value={formData.paymentDate || ''} onChange={(e) => setFormData({...formData, paymentDate: e.target.value})} />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 mb-1">Comissão (R$/sc)</label>
+                                    <div className="relative">
+                                        <input type="number" className="w-full border rounded-lg p-2.5 pl-8" value={formData.commissionPerBag || ''} onChange={(e) => setFormData({...formData, commissionPerBag: parseFloat(e.target.value)})} />
+                                        <DollarSign className="w-4 h-4 text-slate-400 absolute left-2.5 top-3.5" />
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 mb-1">Moeda do Contrato</label>
+                                    <select className="w-full border rounded-lg p-2.5 bg-white" value={formData.currency} onChange={(e) => setFormData({...formData, currency: e.target.value as any})}>
+                                        <option value="BRL">BRL - Real</option>
+                                        <option value="USD">USD - Dólar</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 mb-1">Taxa Câmbio (Ref)</label>
+                                    <input type="number" className="w-full border rounded-lg p-2.5" value={formData.exchangeRate || ''} onChange={(e) => setFormData({...formData, exchangeRate: parseFloat(e.target.value)})} />
                                 </div>
                             </div>
-                             <div>
-                                <label className="block text-sm font-medium text-slate-700 mb-1">Moeda do Contrato</label>
-                                <select className="w-full border rounded-lg p-2.5 bg-white" value={formData.currency} onChange={(e) => setFormData({...formData, currency: e.target.value as any})}>
-                                    <option value="BRL">BRL - Real</option>
-                                    <option value="USD">USD - Dólar</option>
-                                </select>
-                            </div>
-                             <div>
-                                <label className="block text-sm font-medium text-slate-700 mb-1">Taxa Câmbio (Ref)</label>
-                                <input type="number" className="w-full border rounded-lg p-2.5" value={formData.exchangeRate || ''} onChange={(e) => setFormData({...formData, exchangeRate: parseFloat(e.target.value)})} />
+
+                            {/* BANK ACCOUNT SELECTION (NEW) */}
+                            <div className="bg-emerald-50 p-3 rounded-lg border border-emerald-100">
+                                <label className="flex items-center gap-2 text-sm font-bold text-emerald-800 mb-2">
+                                    <Banknote className="w-4 h-4" /> Conta Bancária do Vendedor
+                                </label>
+                                {availableAccounts.length === 0 ? (
+                                    <p className="text-sm text-red-500 italic">O produtor não possui contas bancárias cadastradas. Cadastre em "Cadastros".</p>
+                                ) : (
+                                    <select 
+                                        className="w-full border border-emerald-200 rounded p-2 text-sm bg-white"
+                                        value={formData.sellerBankDetails ? JSON.stringify(formData.sellerBankDetails) : ''}
+                                        onChange={(e) => {
+                                            if(e.target.value) {
+                                                const bank = JSON.parse(e.target.value);
+                                                setFormData({...formData, sellerBankDetails: bank});
+                                            }
+                                        }}
+                                    >
+                                        {availableAccounts.map((acc, idx) => (
+                                            <option key={idx} value={JSON.stringify(acc)}>
+                                                {acc.bankName} - Ag: {acc.agency} CC: {acc.account} ({acc.holder})
+                                            </option>
+                                        ))}
+                                    </select>
+                                )}
                             </div>
                         </div>
                     </div>

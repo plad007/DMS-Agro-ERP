@@ -1,6 +1,7 @@
+
 import React, { useState, useEffect } from 'react';
-import { Plus, Search, Edit2, Trash2, Tractor, Building2, MapPin, X, Save, Eye, Wallet, FileText } from 'lucide-react';
-import { Producer, Buyer, Farm } from '../types';
+import { Plus, Search, Edit2, Trash2, Tractor, Building2, MapPin, X, Save, Eye, Wallet, FileText, Banknote } from 'lucide-react';
+import { Producer, Buyer, Farm, BankAccount } from '../types';
 import { getProducers, getBuyers, saveProducer, saveBuyer, deleteProducer, deleteBuyer } from '../services/mockService';
 
 // Helper to display friendly names
@@ -33,7 +34,7 @@ export const Registries: React.FC = () => {
   // Form State
   const [producerForm, setProducerForm] = useState<Partial<Producer>>({
       farms: [],
-      bankDetails: { bankName: '', agency: '', account: '' },
+      bankDetails: [],
       funruralType: 'COMERCIALIZACAO'
   });
   
@@ -41,8 +42,9 @@ export const Registries: React.FC = () => {
       type: 'TRADING'
   });
 
-  // Temporary Farm State for the Form
+  // Temporary Inputs
   const [tempFarm, setTempFarm] = useState<Partial<Farm>>({ name: '', address: '' });
+  const [tempBank, setTempBank] = useState<Partial<BankAccount>>({ bankName: '', agency: '', account: '', holder: '', holderDoc: '' });
 
   const refreshData = async () => {
     setLoading(true);
@@ -67,7 +69,7 @@ export const Registries: React.FC = () => {
     setProducerForm({
         id: Math.random().toString(36).substr(2, 9), // Temp ID for new
         farms: [],
-        bankDetails: { bankName: '', agency: '', account: '' },
+        bankDetails: [],
         funruralType: 'COMERCIALIZACAO'
     });
     setIsProducerModalOpen(true);
@@ -110,6 +112,32 @@ export const Registries: React.FC = () => {
       setProducerForm(prev => ({
           ...prev,
           farms: prev.farms?.filter(f => f.id !== id)
+      }));
+  };
+
+  const addBank = () => {
+      if (!tempBank.bankName || !tempBank.account) {
+          alert("Informe ao menos o Banco e a Conta.");
+          return;
+      }
+      const newBank: BankAccount = {
+          bankName: tempBank.bankName!,
+          agency: tempBank.agency || '',
+          account: tempBank.account!,
+          holder: tempBank.holder || producerForm.name,
+          holderDoc: tempBank.holderDoc || producerForm.doc
+      };
+      setProducerForm(prev => ({
+          ...prev,
+          bankDetails: [...(prev.bankDetails || []), newBank]
+      }));
+      setTempBank({ bankName: '', agency: '', account: '', holder: '', holderDoc: '' });
+  };
+
+  const removeBank = (index: number) => {
+      setProducerForm(prev => ({
+          ...prev,
+          bankDetails: prev.bankDetails?.filter((_, i) => i !== index)
       }));
   };
 
@@ -337,25 +365,20 @@ export const Registries: React.FC = () => {
                             <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-2">
                                 <Wallet className="w-4 h-4" /> Dados Bancários
                             </h4>
-                            <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div>
-                                        <p className="text-[10px] uppercase text-slate-500">Banco</p>
-                                        <p className="font-bold text-slate-800">{viewingProducer.bankDetails.bankName}</p>
-                                    </div>
-                                    <div>
-                                        <p className="text-[10px] uppercase text-slate-500">Favorecido</p>
-                                        <p className="font-bold text-slate-800 truncate">{viewingProducer.name}</p>
-                                    </div>
-                                    <div>
-                                        <p className="text-[10px] uppercase text-slate-500">Agência</p>
-                                        <p className="font-bold text-slate-800">{viewingProducer.bankDetails.agency}</p>
-                                    </div>
-                                    <div>
-                                        <p className="text-[10px] uppercase text-slate-500">Conta</p>
-                                        <p className="font-bold text-slate-800">{viewingProducer.bankDetails.account}</p>
-                                    </div>
-                                </div>
+                            <div className="space-y-3 max-h-[200px] overflow-y-auto">
+                                {viewingProducer.bankDetails && viewingProducer.bankDetails.length > 0 ? (
+                                    viewingProducer.bankDetails.map((bank, i) => (
+                                        <div key={i} className="bg-slate-50 p-3 rounded-lg border border-slate-200 text-xs">
+                                            <div className="flex justify-between mb-1">
+                                                <span className="font-bold text-slate-800">{bank.bankName}</span>
+                                                <span className="text-slate-500">Ag: {bank.agency} / CC: {bank.account}</span>
+                                            </div>
+                                            <div className="text-slate-500 truncate">{bank.holder} ({bank.holderDoc})</div>
+                                        </div>
+                                    ))
+                                ) : (
+                                    <p className="text-sm text-slate-400 italic">Nenhuma conta cadastrada.</p>
+                                )}
                             </div>
                         </div>
                     </div>
@@ -396,7 +419,7 @@ export const Registries: React.FC = () => {
       {isProducerModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
             <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
-                <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50 sticky top-0">
+                <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50 sticky top-0 z-10">
                     <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2">
                         <Tractor className="w-5 h-5 text-emerald-600" />
                         {/* TypeScript fix: Ensure ID exists before checking length, default to 0 */}
@@ -482,19 +505,47 @@ export const Registries: React.FC = () => {
 
                     {/* Bank Details */}
                      <div>
-                        <h4 className="font-bold text-slate-700 mb-3">Dados Bancários</h4>
-                        <div className="grid grid-cols-3 gap-4">
-                             <div>
-                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Banco</label>
-                                <input type="text" className="w-full border rounded p-2" value={producerForm.bankDetails?.bankName || ''} onChange={e => setProducerForm({...producerForm, bankDetails: {...producerForm.bankDetails!, bankName: e.target.value}})} />
+                        <h4 className="font-bold text-slate-700 mb-3 flex items-center gap-2"><Banknote className="w-4 h-4" /> Dados Bancários (Múltiplas Contas)</h4>
+                        
+                        {/* List Banks */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+                             {producerForm.bankDetails?.map((bank, i) => (
+                                <div key={i} className="bg-white p-3 rounded-lg border border-emerald-100 shadow-sm relative group">
+                                    <button onClick={() => removeBank(i)} className="absolute top-2 right-2 text-slate-300 hover:text-red-500"><X className="w-4 h-4" /></button>
+                                    <p className="font-bold text-slate-800 text-sm">{bank.bankName}</p>
+                                    <p className="text-xs text-slate-500 mt-1">
+                                        AG: <span className="font-mono text-slate-700">{bank.agency}</span> • 
+                                        CC: <span className="font-mono text-slate-700">{bank.account}</span>
+                                    </p>
+                                    <p className="text-[10px] text-slate-400 mt-1 truncate">
+                                        {bank.holder || producerForm.name}
+                                    </p>
+                                </div>
+                             ))}
+                        </div>
+
+                        {/* Add Bank Form */}
+                        <div className="bg-slate-100 p-4 rounded-lg">
+                            <p className="text-xs font-bold text-slate-500 uppercase mb-2">Adicionar Nova Conta</p>
+                            <div className="grid grid-cols-6 gap-2 mb-2">
+                                <div className="col-span-2">
+                                    <input type="text" className="w-full border rounded p-1.5 text-sm" placeholder="Nome do Banco" value={tempBank.bankName} onChange={e => setTempBank({...tempBank, bankName: e.target.value})} />
+                                </div>
+                                <div>
+                                    <input type="text" className="w-full border rounded p-1.5 text-sm" placeholder="Agência" value={tempBank.agency} onChange={e => setTempBank({...tempBank, agency: e.target.value})} />
+                                </div>
+                                <div className="col-span-2">
+                                    <input type="text" className="w-full border rounded p-1.5 text-sm" placeholder="Conta Corrente" value={tempBank.account} onChange={e => setTempBank({...tempBank, account: e.target.value})} />
+                                </div>
+                                <div className="col-span-1">
+                                     <button onClick={addBank} className="w-full bg-emerald-600 text-white p-1.5 rounded hover:bg-emerald-700 flex items-center justify-center h-full">
+                                        <Plus className="w-4 h-4" />
+                                    </button>
+                                </div>
                             </div>
-                            <div>
-                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Agência</label>
-                                <input type="text" className="w-full border rounded p-2" value={producerForm.bankDetails?.agency || ''} onChange={e => setProducerForm({...producerForm, bankDetails: {...producerForm.bankDetails!, agency: e.target.value}})} />
-                            </div>
-                            <div>
-                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Conta Corrente</label>
-                                <input type="text" className="w-full border rounded p-2" value={producerForm.bankDetails?.account || ''} onChange={e => setProducerForm({...producerForm, bankDetails: {...producerForm.bankDetails!, account: e.target.value}})} />
+                            <div className="grid grid-cols-2 gap-2">
+                                <input type="text" className="w-full border rounded p-1.5 text-sm" placeholder="Titular (se diferente)" value={tempBank.holder} onChange={e => setTempBank({...tempBank, holder: e.target.value})} />
+                                <input type="text" className="w-full border rounded p-1.5 text-sm" placeholder="CPF/CNPJ Titular" value={tempBank.holderDoc} onChange={e => setTempBank({...tempBank, holderDoc: e.target.value})} />
                             </div>
                         </div>
                      </div>

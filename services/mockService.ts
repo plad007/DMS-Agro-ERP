@@ -1,25 +1,34 @@
 
-
 import { supabase } from './supabase';
-import { Contract, Shipment, ContractStatus, PricingMode, MarketData, Producer, Buyer, Farm } from '../types';
+import { Contract, Shipment, ContractStatus, PricingMode, MarketData, Producer, Buyer, Farm, BankAccount } from '../types';
 
 // --- MAPPING HELPERS ---
 // Converte do Banco (snake_case) para App (camelCase)
-const mapProducerFromDB = (p: any): Producer => ({
-    id: p.id,
-    name: p.name,
-    doc: p.doc,
-    stateInsc: p.state_insc,
-    email: p.email,
-    region: p.region,
-    funruralType: p.funrural_type,
-    bankDetails: p.bank_details || {},
-    farms: p.farms ? p.farms.map((f: any) => ({
-        id: f.id,
-        name: f.name,
-        address: f.address
-    })) : []
-});
+const mapProducerFromDB = (p: any): Producer => {
+    // Garante que bankDetails seja sempre um array, mesmo se vier como objeto único (legado)
+    let banks: BankAccount[] = [];
+    if (Array.isArray(p.bank_details)) {
+        banks = p.bank_details;
+    } else if (p.bank_details && typeof p.bank_details === 'object') {
+        banks = [p.bank_details];
+    }
+
+    return {
+        id: p.id,
+        name: p.name,
+        doc: p.doc,
+        stateInsc: p.state_insc,
+        email: p.email,
+        region: p.region,
+        funruralType: p.funrural_type,
+        bankDetails: banks,
+        farms: p.farms ? p.farms.map((f: any) => ({
+            id: f.id,
+            name: f.name,
+            address: f.address
+        })) : []
+    };
+};
 
 const mapBuyerFromDB = (b: any): Buyer => ({
     id: b.id,
@@ -36,9 +45,9 @@ const mapContractFromDB = (c: any): Contract => ({
     product: c.product,
     crop: c.crop,
     sellerName: c.seller_name,
-    sellerDoc: c.seller_doc, // Mapeando Doc Vendedor para o Frontend
+    sellerDoc: c.seller_doc, 
     buyerName: c.buyer_name,
-    buyerDoc: c.buyer_doc, // Mapeando Doc Comprador para o Frontend
+    buyerDoc: c.buyer_doc, 
     totalBags: c.total_bags,
     totalTons: c.total_tons,
     deliveredBags: c.delivered_bags,
@@ -59,7 +68,8 @@ const mapContractFromDB = (c: any): Contract => ({
     commissionPerBag: c.commission_per_bag,
     paymentDate: c.payment_date,
     commissionDueDate: c.commission_due_date,
-    closingDate: c.closing_date, // Agora usa a coluna real
+    closingDate: c.closing_date,
+    sellerBankDetails: c.seller_bank_details, // Mapeia a conta selecionada
     status: c.status,
     createdAt: c.created_at,
     signatureData: c.signature_data
@@ -150,7 +160,7 @@ export const saveProducer = async (producer: Producer): Promise<Producer | null>
         email: producer.email,
         region: producer.region,
         funrural_type: producer.funruralType,
-        bank_details: producer.bankDetails
+        bank_details: producer.bankDetails // Agora salva o array completo
     };
 
     let producerId = producer.id;
@@ -217,9 +227,9 @@ export const saveContract = async (contract: Contract) => {
         product: contract.product,
         crop: contract.crop,
         seller_name: contract.sellerName,
-        seller_doc: contract.sellerDoc, // SALVANDO DOC para garantir o vínculo
+        seller_doc: contract.sellerDoc,
         buyer_name: contract.buyerName,
-        buyer_doc: contract.buyerDoc,   // SALVANDO DOC para garantir o vínculo
+        buyer_doc: contract.buyerDoc,
         total_bags: contract.totalBags,
         total_tons: contract.totalTons,
         delivered_bags: contract.deliveredBags,
@@ -240,7 +250,8 @@ export const saveContract = async (contract: Contract) => {
         commission_per_bag: contract.commissionPerBag,
         payment_date: contract.paymentDate,
         commission_due_date: contract.commissionDueDate,
-        closing_date: contract.closingDate, // Agora salva na coluna correta
+        closing_date: contract.closingDate,
+        seller_bank_details: contract.sellerBankDetails, // Salva o snapshot da conta
         status: contract.status,
         signature_data: contract.signatureData
     };
@@ -379,17 +390,17 @@ export const bulkInsertProducers = async (data: any[]) => {
             email: row.email,
             region: row.region,
             funrural_type: fType,
-            bank_details: {
+            // Importação assume 1 conta por linha, cria array
+            bank_details: [{
                 bankName: row.bank_name || '',
                 agency: row.agency || '',
                 account: row.account || '',
                 holder: row.holder || row.name,
                 holderDoc: row.holder_doc || row.doc
-            }
+            }]
         };
     });
 
-    // DEDUPLICAÇÃO: Remove registros repetidos (mesmo DOC) DENTRO do arquivo antes de enviar
     const uniqueMap = new Map();
     formattedData.forEach(item => {
         if (item.doc) {
@@ -398,7 +409,6 @@ export const bulkInsertProducers = async (data: any[]) => {
     });
     const uniqueProducers = Array.from(uniqueMap.values());
 
-    // Usando UPSERT (Atualiza se existir, Insere se novo)
     const { error } = await supabase.from('producers').upsert(uniqueProducers, { onConflict: 'doc' });
     if (error) throw error;
 };
@@ -423,7 +433,6 @@ export const bulkInsertFarms = async (csvData: any[]) => {
     const farmsToInsert: any[] = [];
     const errors: string[] = [];
 
-    // Deduplicação básica de fazendas no arquivo (Produtor + Nome)
     const uniqueFarmCheck = new Set();
 
     csvData.forEach(row => {
@@ -444,7 +453,6 @@ export const bulkInsertFarms = async (csvData: any[]) => {
     });
 
     if (farmsToInsert.length > 0) {
-        // Tenta inserir. Se houver constraint de unicidade no banco, o ignoreDuplicates vai evitar o erro
         const { error: insertError } = await supabase.from('farms').upsert(farmsToInsert, { ignoreDuplicates: true });
         if (insertError) throw insertError;
     }

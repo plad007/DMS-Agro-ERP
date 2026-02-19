@@ -13,6 +13,14 @@ export enum ContractStatus {
 
 export type FreightType = 'CIF' | 'FOB';
 
+export interface BankAccount {
+    bankName: string;
+    agency: string;
+    account: string;
+    holder?: string; // Optional redundancy
+    holderDoc?: string; // Optional redundancy
+}
+
 export interface Contract {
   id: string;
   number: string; // Ex: 1001S26
@@ -55,6 +63,9 @@ export interface Contract {
   
   closingDate: string; // Nova Data de Fechamento do Negócio
 
+  // Specific Bank Details for this contract (Snapshot)
+  sellerBankDetails?: BankAccount; 
+
   status: ContractStatus;
   createdAt: string;
   signatureData?: {
@@ -80,14 +91,6 @@ export interface MarketData {
   cbotSoy: number;
 }
 
-export interface BankAccount {
-    bankName: string;
-    agency: string;
-    account: string;
-    holder?: string; // Optional redundancy
-    holderDoc?: string; // Optional redundancy
-}
-
 export interface Farm {
     id: string;
     name: string; // FAZENDA
@@ -102,7 +105,7 @@ export interface Producer {
     email?: string;
     region: string; // REGIÃO
     farms: Farm[]; // Lista de fazendas
-    bankDetails: BankAccount;
+    bankDetails: BankAccount[]; // Lista de contas bancárias (Atualizado para Array)
     funruralType: 'FOLHA' | 'COMERCIALIZACAO' | 'PJ_ISENTO'; // TIPO DE FUNRURAL ATUALIZADO
 }
 

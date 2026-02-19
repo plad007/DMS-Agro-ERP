@@ -37,7 +37,7 @@ export const Reports: React.FC<ReportsProps> = ({ contracts }) => {
 
     // --- LOGIC 1: SAFRA PACING (EVOLUÇÃO COMPARATIVA RELATIVA) ---
     const pacingData = useMemo(() => {
-        const crops = Array.from(new Set(contracts.map(c => c.crop))).sort();
+        const crops: string[] = Array.from(new Set(contracts.map(c => c.crop))).sort();
         
         const relevantContracts = contracts
             .filter(c => c.product === selectedProduct)
@@ -84,7 +84,7 @@ export const Reports: React.FC<ReportsProps> = ({ contracts }) => {
         });
 
         // Ordenar cronologicamente pelo eixo virtual
-        const sortedData = Object.values(timelineData).sort((a: any, b: any) => a.virtualDate.localeCompare(b.virtualDate));
+        const sortedData: any[] = Object.values(timelineData).sort((a: any, b: any) => a.virtualDate.localeCompare(b.virtualDate));
 
         // Acumular valores
         const finalData = [];
