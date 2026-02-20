@@ -263,8 +263,26 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
         setAvailableLocations(seller.farms.map(f => ({name: f.name, id: f.id})));
         const exists = seller.farms.some(f => f.name === contract.pickupLocation);
         setIsNewLocation(!exists);
-        // Bank Accounts Logic
-        setAvailableAccounts(seller.bankDetails || []);
+        
+        // --- LOGIC TO RESTORE SAVED BANK ACCOUNT IN EDIT MODE ---
+        let accounts = seller.bankDetails || [];
+        
+        // Se o contrato tem uma conta salva
+        if (contract.sellerBankDetails) {
+            // Verifica se essa conta exata existe na lista atual do produtor
+            const isAccountPresent = accounts.some(acc => 
+                acc.bankName === contract.sellerBankDetails?.bankName && 
+                acc.account === contract.sellerBankDetails?.account
+            );
+
+            // Se não existir (ex: conta antiga ou produtor editado), adiciona ela na lista temporariamente
+            // para que o Select consiga exibir o valor corretamente
+            if (!isAccountPresent) {
+                accounts = [contract.sellerBankDetails, ...accounts];
+            }
+        }
+        setAvailableAccounts(accounts);
+
     } else {
         setAvailableLocations([]);
         setAvailableAccounts([]);

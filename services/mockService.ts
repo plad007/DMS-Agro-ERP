@@ -39,41 +39,57 @@ const mapBuyerFromDB = (b: any): Buyer => ({
     type: b.type
 });
 
-const mapContractFromDB = (c: any): Contract => ({
-    id: c.id,
-    number: c.number,
-    product: c.product,
-    crop: c.crop,
-    sellerName: c.seller_name,
-    sellerDoc: c.seller_doc, 
-    buyerName: c.buyer_name,
-    buyerDoc: c.buyer_doc, 
-    totalBags: c.total_bags,
-    totalTons: c.total_tons,
-    deliveredBags: c.delivered_bags,
-    freightType: c.freight_type,
-    pickupLocation: c.pickup_location,
-    shipmentStartDate: c.shipment_start_date,
-    shipmentEndDate: c.shipment_end_date,
-    observation: c.observation,
-    currency: c.currency,
-    exchangeRate: c.exchange_rate,
-    pricingMode: c.pricing_mode,
-    isFixed: c.is_fixed,
-    basePrice: c.base_price,
-    cbotComponent: c.cbot_component,
-    basisComponent: c.basis_component,
-    costComponent: c.cost_component,
-    finalPrice: c.final_price,
-    commissionPerBag: c.commission_per_bag,
-    paymentDate: c.payment_date,
-    commissionDueDate: c.commission_due_date,
-    closingDate: c.closing_date,
-    sellerBankDetails: c.seller_bank_details, // Mapeia a conta selecionada
-    status: c.status,
-    createdAt: c.created_at,
-    signatureData: c.signature_data
-});
+const mapContractFromDB = (c: any): Contract => {
+    // Helper para garantir parse correto da conta bancária
+    let bankDetails: BankAccount | undefined = undefined;
+    if (c.seller_bank_details) {
+        if (typeof c.seller_bank_details === 'string') {
+            try {
+                bankDetails = JSON.parse(c.seller_bank_details);
+            } catch (e) {
+                console.error("Erro ao parsear conta bancária do contrato", c.number);
+            }
+        } else {
+            bankDetails = c.seller_bank_details;
+        }
+    }
+
+    return {
+        id: c.id,
+        number: c.number,
+        product: c.product,
+        crop: c.crop,
+        sellerName: c.seller_name,
+        sellerDoc: c.seller_doc, 
+        buyerName: c.buyer_name,
+        buyerDoc: c.buyer_doc, 
+        totalBags: c.total_bags,
+        totalTons: c.total_tons,
+        deliveredBags: c.delivered_bags,
+        freightType: c.freight_type,
+        pickupLocation: c.pickup_location,
+        shipmentStartDate: c.shipment_start_date,
+        shipmentEndDate: c.shipment_end_date,
+        observation: c.observation,
+        currency: c.currency,
+        exchangeRate: c.exchange_rate,
+        pricingMode: c.pricing_mode,
+        isFixed: c.is_fixed,
+        basePrice: c.base_price,
+        cbotComponent: c.cbot_component,
+        basisComponent: c.basis_component,
+        costComponent: c.cost_component,
+        finalPrice: c.final_price,
+        commissionPerBag: c.commission_per_bag,
+        paymentDate: c.payment_date,
+        commissionDueDate: c.commission_due_date,
+        closingDate: c.closing_date,
+        sellerBankDetails: bankDetails, // Usa o valor processado
+        status: c.status,
+        createdAt: c.created_at,
+        signatureData: c.signature_data
+    };
+};
 
 const mapShipmentFromDB = (s: any): Shipment => ({
     id: s.id,
@@ -267,24 +283,12 @@ export const saveContract = async (contract: Contract) => {
         }
     };
 
-    // Tenta salvar
+    // Tenta salvar - SEM FALLBACK (Para garantir que o erro de coluna falte exploda se o SQL não for rodado)
     let { error } = await performSave(dbContract);
 
-    // Lógica de Fallback: Se o erro for de coluna inexistente (código 42703 no Postgres), 
-    // removemos o campo problemático e tentamos novamente.
-    if (error && (error.code === '42703' || error.message?.includes('seller_bank_details'))) {
-        console.warn("DMS Warning: Coluna 'seller_bank_details' não encontrada no banco. Salvando em modo de compatibilidade (sem dados bancários snapshot).");
-        
-        // Remove a propriedade problemática
-        delete (dbContract as any).seller_bank_details;
-        
-        // Tenta novamente
-        const retry = await performSave(dbContract);
-        error = retry.error;
-    }
-
     if (error) {
-        throw new Error(error.message);
+        console.error("Erro Supabase:", error);
+        throw new Error(`Erro ao salvar no banco: ${error.message}. Verifique se a coluna 'seller_bank_details' existe.`);
     }
 };
 
