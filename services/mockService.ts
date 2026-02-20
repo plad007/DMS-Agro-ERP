@@ -258,10 +258,33 @@ export const saveContract = async (contract: Contract) => {
 
     const isNew = contract.id.length < 15;
 
-    if (isNew) {
-        await supabase.from('contracts').insert(dbContract);
-    } else {
-        await supabase.from('contracts').update(dbContract).eq('id', contract.id);
+    // Helper para realizar a operação (Insert ou Update)
+    const performSave = async (payload: any) => {
+        if (isNew) {
+            return await supabase.from('contracts').insert(payload);
+        } else {
+            return await supabase.from('contracts').update(payload).eq('id', contract.id);
+        }
+    };
+
+    // Tenta salvar
+    let { error } = await performSave(dbContract);
+
+    // Lógica de Fallback: Se o erro for de coluna inexistente (código 42703 no Postgres), 
+    // removemos o campo problemático e tentamos novamente.
+    if (error && (error.code === '42703' || error.message?.includes('seller_bank_details'))) {
+        console.warn("DMS Warning: Coluna 'seller_bank_details' não encontrada no banco. Salvando em modo de compatibilidade (sem dados bancários snapshot).");
+        
+        // Remove a propriedade problemática
+        delete (dbContract as any).seller_bank_details;
+        
+        // Tenta novamente
+        const retry = await performSave(dbContract);
+        error = retry.error;
+    }
+
+    if (error) {
+        throw new Error(error.message);
     }
 };
 
@@ -275,7 +298,8 @@ export const addShipment = async (shipment: Shipment) => {
         date: shipment.date
     };
     
-    await supabase.from('shipments').insert(dbShipment);
+    const { error } = await supabase.from('shipments').insert(dbShipment);
+    if (error) throw error;
 
     const { data: contract } = await supabase.from('contracts').select('delivered_bags').eq('id', shipment.contractId).single();
     if (contract) {
@@ -295,15 +319,39 @@ export const generateContractNumber = async (product: string, crop: string): Pro
     yearSuffix = cleanCrop.slice(-2); 
   }
 
-  const { count } = await supabase
+  // BUSCA O ÚLTIMO NÚMERO USADO PARA CALCULAR O PRÓXIMO (Evita duplicidade por deleção)
+  // Ao invés de contar, pegamos todos os números e achamos o maior sequencial.
+  const { data, error } = await supabase
     .from('contracts')
-    .select('*', { count: 'exact', head: true })
+    .select('number')
     .eq('product', product)
     .eq('crop', crop);
 
-  const seq = 1001 + (count || 0);
+  if (error) {
+      console.error('Erro ao gerar número de contrato:', error);
+  }
+
+  // COMEÇAR DE 2000 (para gerar 2001)
+  let maxSeq = 2000;
+
+  if (data && data.length > 0) {
+      data.forEach(row => {
+          if (row.number) {
+              // Extrai os dígitos do início da string (Ex: 1001 de 1001S24)
+              const match = row.number.match(/^(\d+)/);
+              if (match) {
+                  const seq = parseInt(match[1], 10);
+                  if (!isNaN(seq) && seq > maxSeq) {
+                      maxSeq = seq;
+                  }
+              }
+          }
+      });
+  }
+
+  const nextSeq = maxSeq + 1;
   
-  return `${seq}${letter}${yearSuffix}`;
+  return `${nextSeq}${letter}${yearSuffix}`;
 };
 
 // --- BULK OPERATIONS FOR CSV IMPORT ---

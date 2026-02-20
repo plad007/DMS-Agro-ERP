@@ -37,7 +37,7 @@ export const Reports: React.FC<ReportsProps> = ({ contracts }) => {
 
     // --- LOGIC 1: SAFRA PACING (EVOLUÇÃO COMPARATIVA RELATIVA) ---
     const pacingData = useMemo(() => {
-        const crops: string[] = Array.from(new Set(contracts.map(c => c.crop))).sort();
+        const crops: string[] = Array.from<string>(new Set(contracts.map(c => c.crop))).sort();
         
         const relevantContracts = contracts
             .filter(c => c.product === selectedProduct)

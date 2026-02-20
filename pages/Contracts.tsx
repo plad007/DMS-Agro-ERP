@@ -23,7 +23,7 @@ const YEARS = [2024, 2025, 2026, 2027, 2028];
 
 // --- COMPONENTE DE IMPRESSÃO ISOLADO (IFRAME) ---
 interface PrintIsolationProps {
-    children: React.ReactNode;
+    children?: React.ReactNode;
     onClose: () => void;
     title: string;
 }
@@ -274,9 +274,30 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
     setIsModalOpen(true);
   };
 
+  // Helper para calcular safra atual dinamicamente
+  const getCurrentCrop = () => {
+      const today = new Date();
+      const month = today.getMonth() + 1; // 1-12
+      const year = today.getFullYear();
+      const shortYear = year.toString().slice(-2);
+      const nextShortYear = (year + 1).toString().slice(-2);
+      const prevShortYear = (year - 1).toString().slice(-2);
+      
+      // Se estamos no segundo semestre, geralmente já negociamos a safra seguinte (plantio)
+      // Se estamos no primeiro semestre, estamos na colheita da safra plantada no ano anterior
+      if (month >= 7) {
+          return `${shortYear}/${nextShortYear}`;
+      } else {
+          return `${prevShortYear}/${shortYear}`;
+      }
+  };
+
   const handleCreate = async () => {
     setIsLoading(true);
-    const newNumber = await generateContractNumber('SOJA', '23/24');
+    
+    const defaultCrop = getCurrentCrop();
+    const newNumber = await generateContractNumber('SOJA', defaultCrop);
+    
     setIsLoading(false);
 
     setEditingContract(null);
@@ -284,7 +305,7 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
       number: newNumber,
       pricingMode: PricingMode.FIXED,
       product: 'SOJA',
-      crop: '23/24',
+      crop: defaultCrop,
       isFixed: false,
       currency: 'BRL',
       freightType: 'FOB',
@@ -358,10 +379,23 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
   };
 
   const handleProductChange = async (newProduct: 'SOJA' | 'MILHO' | 'TRIGO') => {
-      setFormData({...formData, product: newProduct});
-      // Generate new number based on product
-      const newNum = await generateContractNumber(newProduct, formData.crop || '23/24');
+      // Usar a safra que está no formulário, ou a padrão se estiver vazia
+      const currentCrop = formData.crop || getCurrentCrop();
+      
+      setFormData(prev => ({...prev, product: newProduct}));
+      
+      // Generate new number based on product AND current crop
+      const newNum = await generateContractNumber(newProduct, currentCrop);
       setFormData(prev => ({...prev, number: newNum}));
+  };
+  
+  // Atualizar número do contrato quando a Safra muda (no onBlur)
+  const handleCropChangeBlur = async (newCrop: string) => {
+      if (!newCrop || !formData.product) return;
+      setIsLoading(true);
+      const newNum = await generateContractNumber(formData.product as string, newCrop);
+      setFormData(prev => ({...prev, number: newNum}));
+      setIsLoading(false);
   };
 
   const handleVolumeChange = (value: string, unit: 'BAGS' | 'TONS') => {
@@ -429,10 +463,16 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
       createdAt: editingContract?.createdAt || new Date().toISOString()
     };
 
-    await saveContract(finalContract);
-    await onUpdate(); // Refresh global list
-    setIsLoading(false);
-    setIsModalOpen(false);
+    try {
+        await saveContract(finalContract);
+        await onUpdate(); // Refresh global list
+        setIsLoading(false);
+        setIsModalOpen(false);
+    } catch (error: any) {
+        console.error("Failed to save contract", error);
+        alert(`Erro ao salvar contrato: ${error.message || 'Erro desconhecido'}`);
+        setIsLoading(false);
+    }
   };
 
   const calculatePrice = () => {
@@ -708,866 +748,454 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
     );
   };
 
-  const ReportDocument = ({ data }: { data: Contract[] }) => {
-      // Report Document remains unchanged for list view
-      return (
-        <div className="bg-white w-full max-w-[210mm] min-h-[297mm] p-[10mm] mx-auto text-slate-800">
-            <div className="flex justify-between items-start border-b-2 border-emerald-800 pb-4 mb-6">
-                <div className="flex items-center gap-3">
-                    <div className="text-emerald-800">
-                        <img 
-                            src={LOGO_URL} 
-                            alt="DMS Agro" 
-                            className="h-16 w-auto object-contain"
-                            onError={(e) => {
-                                e.currentTarget.style.display = 'none';
-                                e.currentTarget.nextElementSibling?.classList.remove('hidden');
-                            }}
-                        />
-                        <Sprout className="w-12 h-12 hidden" />
-                    </div>
-                    <div>
-                        <h1 className="text-2xl font-black text-emerald-900 leading-none">DMS AGRO</h1>
-                        <p className="text-xs text-emerald-700 font-bold tracking-[0.2em] uppercase mt-1">Comércio de Cereais</p>
-                        <p className="text-[10px] text-slate-500 mt-1 font-medium">CNPJ: 33.082.718/0001-23</p>
-                    </div>
-                </div>
-                <div className="text-right text-[10px] text-slate-500">
-                    <p>311 Sul. Orla 14 Graciosa. Lt 17</p>
-                    <p>Palmas - TO, 77026-070</p>
-                    <p className="mt-1 font-bold">Contato: (63) 99979-8113</p>
-                </div>
-            </div>
-
-            <div className="text-center mb-6">
-                <h2 className="text-xl font-bold text-slate-800 uppercase border-b border-slate-200 inline-block pb-1">
-                    {getReportTitle()}
-                </h2>
-                <p className="text-xs text-slate-500 mt-2">
-                    Gerado em: {new Date().toLocaleString()} | Registros: {data.length}
-                </p>
-            </div>
-
-            <table className="w-full text-xs text-left border-collapse">
-                <thead>
-                    <tr className="bg-emerald-50 border-y border-emerald-200 text-emerald-900">
-                        {reportColumns.date && <th className="p-2 font-bold">Data</th>}
-                        {reportColumns.contract && <th className="p-2 font-bold">Contrato</th>}
-                        {reportColumns.crop && <th className="p-2 font-bold">Safra/Prod</th>}
-                        {reportColumns.seller && <th className="p-2 font-bold">Vendedor</th>}
-                        {reportColumns.buyer && <th className="p-2 font-bold">Comprador</th>}
-                        {reportColumns.volume && <th className="p-2 font-bold text-right">Volume</th>}
-                        {reportColumns.price && <th className="p-2 font-bold text-right">Preço</th>}
-                        {reportColumns.status && <th className="p-2 font-bold text-center">Status</th>}
-                        {reportColumns.freight && <th className="p-2 font-bold">Frete</th>}
-                        {reportColumns.shipmentPeriod && <th className="p-2 font-bold">Período</th>}
-                        {reportColumns.location && <th className="p-2 font-bold">Local Emb.</th>}
-                    </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-200">
-                    {data.map((c, idx) => (
-                        <tr key={c.id} className={idx % 2 === 0 ? 'bg-white text-slate-800' : 'bg-slate-50 text-slate-800'}>
-                            {reportColumns.date && <td className="p-2">{new Date(c.closingDate || c.createdAt).toLocaleDateString()}</td>}
-                            {reportColumns.contract && <td className="p-2 font-bold">{c.number}</td>}
-                            {reportColumns.crop && <td className="p-2">{c.crop} ({c.product.charAt(0)})</td>}
-                            {reportColumns.seller && <td className="p-2 truncate max-w-[120px]">{c.sellerName}</td>}
-                            {reportColumns.buyer && <td className="p-2 truncate max-w-[120px]">{c.buyerName}</td>}
-                            {reportColumns.volume && <td className="p-2 text-right">{c.totalBags.toLocaleString()}</td>}
-                            {reportColumns.price && <td className="p-2 text-right">{c.currency} {c.finalPrice.toFixed(2)}</td>}
-                            {reportColumns.status && (
-                                <td className="p-2 text-center">
-                                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold border ${
-                                        c.status === ContractStatus.SIGNED ? 'bg-green-50 text-green-700 border-green-200' :
-                                        c.status === ContractStatus.DRAFT ? 'bg-slate-100 text-slate-600 border-slate-200' :
-                                        'bg-blue-50 text-blue-700 border-blue-200'
-                                    }`}>
-                                        {c.status.toUpperCase()}
-                                    </span>
-                                </td>
-                            )}
-                            {reportColumns.freight && <td className="p-2 text-[10px]">{c.freightType}</td>}
-                            {reportColumns.shipmentPeriod && <td className="p-2 text-[10px]">{getPeriodDisplay(c.shipmentStartDate, c.shipmentEndDate)}</td>}
-                            {reportColumns.location && <td className="p-2 text-[10px] whitespace-normal max-w-[150px]">{c.pickupLocation}</td>}
-                        </tr>
-                    ))}
-                </tbody>
-                <tfoot className="bg-slate-100 border-t-2 border-slate-300 font-bold text-slate-800">
-                    <tr>
-                        <td colSpan={Object.values(reportColumns).filter(v => v).length} className="p-2 text-right">
-                            Total Volume: {data.reduce((acc, c) => acc + c.totalBags, 0).toLocaleString()} scs
-                        </td>
-                    </tr>
-                </tfoot>
-            </table>
-        </div>
-      );
-  };
-
   return (
     <div className="space-y-6">
-      
-      {/* Action Bar (Unchanged) */}
-      <div className="flex flex-col sm:flex-row justify-between gap-4">
-        <div className="relative flex-1 max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-          <input 
-            type="text" 
-            placeholder="Buscar contratos..." 
-            className="w-full pl-10 pr-4 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-emerald-500 outline-none"
-            value={filter}
-            onChange={(e) => setFilter(e.target.value)}
-          />
+      <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
+        <div className="relative w-full sm:w-96">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <input 
+                type="text" 
+                placeholder="Buscar por número, vendedor ou comprador..." 
+                className="w-full pl-9 pr-4 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-emerald-500 outline-none text-sm"
+                value={filter}
+                onChange={(e) => setFilter(e.target.value)}
+            />
         </div>
-        <div className="flex gap-2">
-           <button onClick={() => setIsReportModalOpen(true)} className="flex items-center px-4 py-2 bg-slate-800 text-white rounded-lg hover:bg-slate-900 shadow-sm transition-colors border border-slate-700">
-            <FileBarChart className="w-5 h-5 mr-2" />
-            Relatório PDF
-          </button>
-           <button className="flex items-center px-4 py-2 bg-white border border-slate-300 rounded-lg text-slate-700 hover:bg-slate-50">
-            <FileSpreadsheet className="w-5 h-5 mr-2" />
-            Importar CSV
-          </button>
-          <button className="flex items-center px-4 py-2 bg-white border border-slate-300 rounded-lg text-slate-700 hover:bg-slate-50">
-            <Download className="w-5 h-5 mr-2" />
-            Exportar
-          </button>
-          <button onClick={handleCreate} disabled={isLoading} className="flex items-center px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 shadow-sm transition-colors disabled:opacity-50">
-            <Plus className="w-5 h-5 mr-2" />
-            Novo Contrato
-          </button>
+        <div className="flex gap-2 w-full sm:w-auto">
+            <button 
+                onClick={handlePrintReport}
+                className="flex items-center px-4 py-2 bg-white text-slate-700 border border-slate-300 rounded-lg shadow-sm hover:bg-slate-50 transition-colors text-sm font-medium"
+            >
+                <FileBarChart className="w-4 h-4 mr-2" />
+                Relatório
+            </button>
+            <button 
+                onClick={handleCreate}
+                disabled={isLoading}
+                className="flex items-center px-4 py-2 bg-emerald-600 text-white rounded-lg shadow-sm hover:bg-emerald-700 transition-colors text-sm font-medium disabled:opacity-50"
+            >
+                <Plus className="w-4 h-4 mr-2" />
+                Novo Contrato
+            </button>
         </div>
       </div>
 
-      {/* Grid (Unchanged) */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm text-slate-600">
-            <thead className="bg-slate-50 border-b border-slate-200 text-slate-800 font-semibold">
-              <tr>
-                <th className="px-6 py-4">Contrato</th>
-                <th className="px-6 py-4">Safra/Prod</th>
-                <th className="px-6 py-4">Partes</th>
-                <th className="px-6 py-4">Volume (scs)</th>
-                <th className="px-6 py-4">Preço (R$)</th>
-                <th className="px-6 py-4">Embarque (Quinzena)</th>
-                <th className="px-6 py-4">Status</th>
-                <th className="px-6 py-4 text-right">Ações</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {filteredContracts.map((contract) => (
-                <tr key={contract.id} className="hover:bg-slate-50 transition-colors">
-                  <td className="px-6 py-4">
-                    <button 
-                        onClick={() => setViewingContract(contract)}
-                        className="font-medium text-emerald-700 hover:underline"
-                    >
-                        {contract.number}
-                    </button>
-                     <div className="text-[10px] text-slate-400 mt-1 flex items-center gap-1">
-                        <Calendar className="w-3 h-3" />
-                        {new Date(contract.closingDate || contract.createdAt).toLocaleDateString()}
-                    </div>
-                  </td>
-                  <td className="px-6 py-4">{contract.crop} <span className="text-xs text-slate-400">({contract.product})</span></td>
-                  <td className="px-6 py-4">
-                    <div className="text-slate-800 font-medium">{contract.sellerName}</div>
-                    <div className="text-xs text-slate-500">→ {contract.buyerName}</div>
-                  </td>
-                  <td className="px-6 py-4">
-                    {contract.totalBags.toLocaleString()} 
-                    <div className="w-16 h-1 bg-slate-200 rounded-full mt-1 overflow-hidden">
-                        <div 
-                            className="h-full bg-emerald-500" 
-                            style={{ width: `${(contract.deliveredBags / contract.totalBags) * 100}%` }}
-                        ></div>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4">
-                    {contract.isFixed ? (
-                        <span className="flex items-center gap-1 font-bold text-slate-800">
-                            <Lock className="w-3 h-3 text-emerald-600" />
-                            {contract.finalPrice.toFixed(2)}
-                        </span>
-                    ) : (
-                        <span className="flex items-center gap-1 text-amber-600 bg-amber-50 px-2 py-0.5 rounded text-xs font-semibold">
-                            <Unlock className="w-3 h-3" />
-                            A Fixar
-                        </span>
+            <table className="w-full text-left text-sm text-slate-600">
+                <thead className="bg-slate-50 border-b border-slate-200 text-slate-800 font-semibold">
+                    <tr>
+                        <th className="px-6 py-4">Número</th>
+                        <th className="px-6 py-4">Data</th>
+                        <th className="px-6 py-4">Safra / Produto</th>
+                        <th className="px-6 py-4">Vendedor</th>
+                        <th className="px-6 py-4 text-right">Volume</th>
+                        <th className="px-6 py-4 text-right">Preço</th>
+                        <th className="px-6 py-4 text-center">Status</th>
+                        <th className="px-6 py-4 text-right">Ações</th>
+                    </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                    {filteredContracts.map(contract => (
+                        <tr key={contract.id} className="hover:bg-slate-50 transition-colors">
+                            <td className="px-6 py-4 font-mono font-bold text-slate-700">{contract.number}</td>
+                            <td className="px-6 py-4">
+                                {new Date(contract.createdAt).toLocaleDateString()}
+                            </td>
+                            <td className="px-6 py-4">
+                                <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium mr-2 ${
+                                    contract.product === 'SOJA' ? 'bg-green-100 text-green-800' :
+                                    contract.product === 'MILHO' ? 'bg-yellow-100 text-yellow-800' :
+                                    'bg-amber-100 text-amber-800'
+                                }`}>
+                                    {contract.product}
+                                </span>
+                                <span className="text-xs text-slate-500">{contract.crop}</span>
+                            </td>
+                            <td className="px-6 py-4 font-medium text-slate-900">{contract.sellerName}</td>
+                            <td className="px-6 py-4 text-right">
+                                <div className="font-bold text-slate-700">{contract.totalBags.toLocaleString()} scs</div>
+                                <div className="text-xs text-slate-400">{contract.totalTons.toLocaleString()} ton</div>
+                            </td>
+                            <td className="px-6 py-4 text-right">
+                                <div className="font-bold text-emerald-700">R$ {contract.finalPrice.toFixed(2)}</div>
+                                <div className="text-xs text-slate-400">
+                                    {contract.isFixed ? 'Fixado' : 'A Fixar'}
+                                </div>
+                            </td>
+                            <td className="px-6 py-4 text-center">
+                                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                                    contract.status === ContractStatus.SIGNED ? 'bg-emerald-100 text-emerald-800' :
+                                    contract.status === ContractStatus.AWAITING_SIGNATURE ? 'bg-amber-100 text-amber-800' :
+                                    'bg-slate-100 text-slate-600'
+                                }`}>
+                                    {contract.status}
+                                </span>
+                            </td>
+                            <td className="px-6 py-4 text-right">
+                                <div className="flex justify-end gap-2">
+                                    <button onClick={() => handlePrintContract(contract)} className="p-1 text-slate-400 hover:text-slate-600" title="Imprimir"><Printer className="w-4 h-4" /></button>
+                                    <button onClick={() => handleEdit(contract)} className="p-1 text-slate-400 hover:text-emerald-600" title="Editar"><Edit2 className="w-4 h-4" /></button>
+                                    <button onClick={() => handleSendLink(contract)} className="p-1 text-slate-400 hover:text-blue-600" title="Enviar Link"><Send className="w-4 h-4" /></button>
+                                </div>
+                            </td>
+                        </tr>
+                    ))}
+                    {filteredContracts.length === 0 && (
+                        <tr>
+                            <td colSpan={8} className="px-6 py-8 text-center text-slate-500">
+                                Nenhum contrato encontrado com os filtros atuais.
+                            </td>
+                        </tr>
                     )}
-                     <span className="text-xs text-slate-400 ml-1">({contract.currency})</span>
-                  </td>
-                  <td className="px-6 py-4 text-xs">
-                     <span className="font-semibold block text-slate-800">{contract.freightType}</span>
-                     <span className="text-slate-500">{getPeriodDisplay(contract.shipmentStartDate, contract.shipmentEndDate)}</span>
-                  </td>
-                  <td className="px-6 py-4">
-                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                        contract.status === ContractStatus.SIGNED ? 'bg-green-100 text-green-800' :
-                        contract.status === ContractStatus.DRAFT ? 'bg-slate-100 text-slate-800' :
-                        'bg-blue-100 text-blue-800'
-                    }`}>
-                      {contract.status}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 text-right flex justify-end gap-2">
-                    {/* BUTTONS: Print, PDF, Send Link, View, Edit */}
-                    <button 
-                        onClick={() => handlePdf(contract)}
-                        className="text-slate-400 hover:text-red-600 transition-colors"
-                        title="Gerar PDF"
-                    >
-                        <FileDown className="w-4 h-4" />
-                    </button>
-                    <button 
-                        onClick={() => handlePrintContract(contract)}
-                        className="text-slate-400 hover:text-slate-800 transition-colors"
-                        title="Imprimir"
-                    >
-                        <Printer className="w-4 h-4" />
-                    </button>
-                    <button 
-                        onClick={() => handleSendLink(contract)}
-                        className="text-slate-400 hover:text-green-600 transition-colors"
-                        title="Enviar Link Assinatura"
-                    >
-                        <Send className="w-4 h-4" />
-                    </button>
-                    <button 
-                        onClick={() => setViewingContract(contract)} 
-                        className="text-slate-400 hover:text-emerald-600 transition-colors"
-                        title="Visualizar"
-                    >
-                        <Eye className="w-4 h-4" />
-                    </button>
-                    <button 
-                        onClick={() => handleEdit(contract)} 
-                        className="text-slate-400 hover:text-blue-600 transition-colors"
-                        title="Editar"
-                    >
-                        <Edit2 className="w-4 h-4" />
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                </tbody>
+            </table>
         </div>
       </div>
-
-      {/* PRINT ISOLATION PORTAL (IFRAME) */}
-      {printData && (
-          <PrintIsolation onClose={() => setPrintData(null)} title={printData.type === 'SINGLE' ? `Contrato ${printData.data.number}` : 'Relatório'}>
-              {printData.type === 'SINGLE' 
-                ? <ContractDocument contract={printData.data} /> 
-                : <ReportDocument data={printData.data} />
-              }
-          </PrintIsolation>
-      )}
-
-      {/* REPORT GENERATION MODAL (Unchanged) */}
-      {isReportModalOpen && createPortal(
-        <div className="fixed inset-0 z-[100] flex bg-slate-900/80 backdrop-blur-sm items-start justify-center overflow-y-auto">
-             {/* ... Report Modal Content ... */}
-             <div className="w-full max-w-[1200px] my-10 flex gap-6">
-                
-                {/* Configuration Sidebar */}
-                <div className="w-80 bg-white rounded-xl shadow-xl flex flex-col overflow-hidden shrink-0 sticky top-10">
-                    <div className="p-4 border-b border-slate-100 bg-slate-50">
-                        <h3 className="font-bold text-slate-800 flex items-center gap-2">
-                            <Settings2 className="w-5 h-5 text-emerald-600" />
-                            Configurar Relatório
-                        </h3>
-                    </div>
-                    
-                    <div className="p-4 flex-1 overflow-y-auto max-h-[70vh] space-y-6">
-                        
-                        {/* DATA FILTERS SECTION */}
-                        <div>
-                            <div className="flex justify-between items-center mb-3">
-                                <p className="text-xs font-bold text-slate-400 uppercase">Filtros de Dados</p>
-                                <button 
-                                    onClick={() => setReportFilters({product:'', crop:'', seller:'', buyer:'', status:'', freight:'', currency:'', shipmentMonth: '', shipmentYear: ''})}
-                                    className="text-[10px] text-blue-600 hover:underline"
-                                >
-                                    Limpar
-                                </button>
-                            </div>
-                            {/* ... Filters Inputs ... */}
-                             <div className="space-y-3">
-                                {/* Safra */}
-                                <div>
-                                    <label className="text-xs font-semibold text-slate-600">Safra</label>
-                                    <input 
-                                        type="text" 
-                                        className="w-full text-xs border border-slate-300 rounded p-1.5"
-                                        placeholder="Ex: 23/24"
-                                        value={reportFilters.crop}
-                                        onChange={e => setReportFilters({...reportFilters, crop: e.target.value})}
-                                    />
-                                </div>
-                                {/* Período de Embarque (NEW) */}
-                                <div>
-                                    <label className="text-xs font-semibold text-slate-600">Período de Embarque</label>
-                                    <div className="flex gap-2">
-                                        <select 
-                                            className="w-full text-xs border border-slate-300 rounded p-1.5 bg-white"
-                                            value={reportFilters.shipmentMonth}
-                                            onChange={e => setReportFilters({...reportFilters, shipmentMonth: e.target.value})}
-                                        >
-                                            <option value="">Mês</option>
-                                            {MONTHS.map((m, i) => <option key={i} value={i.toString()}>{m}</option>)}
-                                        </select>
-                                        <select 
-                                            className="w-full text-xs border border-slate-300 rounded p-1.5 bg-white"
-                                            value={reportFilters.shipmentYear}
-                                            onChange={e => setReportFilters({...reportFilters, shipmentYear: e.target.value})}
-                                        >
-                                            <option value="">Ano</option>
-                                            {YEARS.map(y => <option key={y} value={y.toString()}>{y}</option>)}
-                                        </select>
-                                    </div>
-                                </div>
-                                {/* Produto */}
-                                <div>
-                                    <label className="text-xs font-semibold text-slate-600">Produto</label>
-                                    <select 
-                                        className="w-full text-xs border border-slate-300 rounded p-1.5 bg-white"
-                                        value={reportFilters.product}
-                                        onChange={e => setReportFilters({...reportFilters, product: e.target.value})}
-                                    >
-                                        <option value="">Todos</option>
-                                        <option value="SOJA">Soja</option>
-                                        <option value="MILHO">Milho</option>
-                                        <option value="TRIGO">Trigo</option>
-                                    </select>
-                                </div>
-                                {/* Vendedor */}
-                                <div>
-                                    <label className="text-xs font-semibold text-slate-600">Vendedor</label>
-                                    <select 
-                                        className="w-full text-xs border border-slate-300 rounded p-1.5 bg-white"
-                                        value={reportFilters.seller}
-                                        onChange={e => setReportFilters({...reportFilters, seller: e.target.value})}
-                                    >
-                                        <option value="">Todos</option>
-                                        {producersList.map(p => <option key={p.id} value={p.name}>{p.name}</option>)}
-                                    </select>
-                                </div>
-                                {/* Comprador */}
-                                <div>
-                                    <label className="text-xs font-semibold text-slate-600">Comprador</label>
-                                    <select 
-                                        className="w-full text-xs border border-slate-300 rounded p-1.5 bg-white"
-                                        value={reportFilters.buyer}
-                                        onChange={e => setReportFilters({...reportFilters, buyer: e.target.value})}
-                                    >
-                                        <option value="">Todos</option>
-                                        {buyersList.map(b => <option key={b.id} value={b.name}>{b.name}</option>)}
-                                    </select>
-                                </div>
-                                {/* Status */}
-                                <div>
-                                    <label className="text-xs font-semibold text-slate-600">Status</label>
-                                    <select 
-                                        className="w-full text-xs border border-slate-300 rounded p-1.5 bg-white"
-                                        value={reportFilters.status}
-                                        onChange={e => setReportFilters({...reportFilters, status: e.target.value})}
-                                    >
-                                        <option value="">Todos</option>
-                                        {Object.values(ContractStatus).map(s => <option key={s} value={s}>{s}</option>)}
-                                    </select>
-                                </div>
-                            </div>
-                        </div>
-
-                        <hr className="border-slate-100" />
-
-                        {/* COLUMNS SECTION */}
-                        <div>
-                             <p className="text-xs font-bold text-slate-400 uppercase mb-3">Colunas Visíveis</p>
-                             <div className="space-y-2">
-                                <div className="p-2 bg-slate-50 rounded border border-slate-100">
-                                    <label className="flex items-center gap-2 text-sm text-slate-800 font-medium cursor-pointer">
-                                        <input type="checkbox" checked={reportColumns.date} onChange={() => toggleReportColumn('date')} className="rounded text-emerald-600 focus:ring-emerald-500" />
-                                        Data Emissão
-                                    </label>
-                                </div>
-                                <div className="p-2 bg-slate-50 rounded border border-slate-100">
-                                    <label className="flex items-center gap-2 text-sm text-slate-800 font-medium cursor-pointer">
-                                        <input type="checkbox" checked={reportColumns.contract} onChange={() => toggleReportColumn('contract')} className="rounded text-emerald-600 focus:ring-emerald-500" />
-                                        Nº Contrato
-                                    </label>
-                                </div>
-                                <div className="p-2 bg-slate-50 rounded border border-slate-100">
-                                    <label className="flex items-center gap-2 text-sm text-slate-800 font-medium cursor-pointer">
-                                        <input type="checkbox" checked={reportColumns.crop} onChange={() => toggleReportColumn('crop')} className="rounded text-emerald-600 focus:ring-emerald-500" />
-                                        Safra / Produto
-                                    </label>
-                                </div>
-                                 <div className="p-2 bg-slate-50 rounded border border-slate-100">
-                                    <label className="flex items-center gap-2 text-sm text-slate-800 font-medium cursor-pointer">
-                                        <input type="checkbox" checked={reportColumns.seller} onChange={() => toggleReportColumn('seller')} className="rounded text-emerald-600 focus:ring-emerald-500" />
-                                        Vendedor
-                                    </label>
-                                </div>
-                                <div className="p-2 bg-slate-50 rounded border border-slate-100">
-                                    <label className="flex items-center gap-2 text-sm text-slate-800 font-medium cursor-pointer">
-                                        <input type="checkbox" checked={reportColumns.buyer} onChange={() => toggleReportColumn('buyer')} className="rounded text-emerald-600 focus:ring-emerald-500" />
-                                        Comprador
-                                    </label>
-                                </div>
-                                <div className="p-2 bg-slate-50 rounded border border-slate-100">
-                                    <label className="flex items-center gap-2 text-sm text-slate-800 font-medium cursor-pointer">
-                                        <input type="checkbox" checked={reportColumns.volume} onChange={() => toggleReportColumn('volume')} className="rounded text-emerald-600 focus:ring-emerald-500" />
-                                        Volume
-                                    </label>
-                                </div>
-                                <div className="p-2 bg-slate-50 rounded border border-slate-100">
-                                    <label className="flex items-center gap-2 text-sm text-slate-800 font-medium cursor-pointer">
-                                        <input type="checkbox" checked={reportColumns.price} onChange={() => toggleReportColumn('price')} className="rounded text-emerald-600 focus:ring-emerald-500" />
-                                        Preço
-                                    </label>
-                                </div>
-                                <div className="p-2 bg-slate-50 rounded border border-slate-100">
-                                    <label className="flex items-center gap-2 text-sm text-slate-800 font-medium cursor-pointer">
-                                        <input type="checkbox" checked={reportColumns.status} onChange={() => toggleReportColumn('status')} className="rounded text-emerald-600 focus:ring-emerald-500" />
-                                        Status
-                                    </label>
-                                </div>
-                                <div className="p-2 bg-slate-50 rounded border border-slate-100">
-                                    <label className="flex items-center gap-2 text-sm text-slate-800 font-medium cursor-pointer">
-                                        <input type="checkbox" checked={reportColumns.location} onChange={() => toggleReportColumn('location')} className="rounded text-emerald-600 focus:ring-emerald-500" />
-                                        Local de Embarque
-                                    </label>
-                                </div>
-                                <div className="p-2 bg-slate-50 rounded border border-slate-100">
-                                    <label className="flex items-center gap-2 text-sm text-slate-800 font-medium cursor-pointer">
-                                        <input type="checkbox" checked={reportColumns.shipmentPeriod} onChange={() => toggleReportColumn('shipmentPeriod')} className="rounded text-emerald-600 focus:ring-emerald-500" />
-                                        Período Embarque
-                                    </label>
-                                </div>
-                             </div>
-                        </div>
-
-                    </div>
-                    <div className="p-4 border-t border-slate-100 bg-slate-50 flex flex-col gap-2">
-                        <button onClick={handlePrintReport} className="w-full flex justify-center items-center px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-medium transition-colors">
-                            <Printer className="w-4 h-4 mr-2" /> Imprimir / Salvar PDF
-                        </button>
-                        <button onClick={() => setIsReportModalOpen(false)} className="w-full px-4 py-2 border border-slate-300 bg-white text-slate-700 rounded-lg hover:bg-slate-50 transition-colors">
-                            Fechar
-                        </button>
-                    </div>
-                </div>
-
-                {/* Preview Area (Visualização APENAS - Não é a impressão real) */}
-                <div className="flex-1 flex justify-center">
-                    <ReportDocument data={reportData} />
-                </div>
-             </div>
-        </div>,
-        document.body
-      )}
-
-      {/* Contract EDIT/CREATE Modal (Existing) */}
+        
+      {/* --- MODAL EDIT/CREATE --- */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-5xl max-h-[95vh] overflow-y-auto">
-            <div className="p-6 border-b border-slate-100 flex justify-between items-center sticky top-0 bg-white z-10">
-              <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
-                <FileText className="w-5 h-5 text-emerald-600" />
-                {editingContract ? `Editar Contrato ${editingContract.number}` : 'Novo Contrato'}
-              </h2>
-              <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-red-500">
-                <span className="text-2xl">&times;</span>
-              </button>
-            </div>
-             
-            <div className="p-6 space-y-8">
-                {/* 1. Parties & Product (Updated) */}
-                <section>
-                    <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wide mb-4">Negociação & Partes</h3>
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                        {/* Fields... */}
-                        {/* Product/Crop */}
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+              <div className="bg-white rounded-xl shadow-2xl w-full max-w-5xl h-[90vh] flex flex-col">
+                  {/* Header */}
+                  <div className="flex justify-between items-center p-6 border-b border-slate-200">
                         <div>
-                            <label className="block text-sm font-medium text-slate-700 mb-1">Produto</label>
-                            <select 
-                                className="w-full rounded-lg border border-slate-300 p-2.5 bg-slate-50 focus:bg-white"
-                                value={formData.product}
-                                onChange={(e) => handleProductChange(e.target.value as any)}
-                            >
-                                <option value="SOJA">Soja</option>
-                                <option value="MILHO">Milho</option>
-                                <option value="TRIGO">Trigo</option>
-                            </select>
+                            <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+                                <FileText className="w-6 h-6 text-emerald-600" />
+                                {editingContract ? `Editar Contrato ${formData.number}` : 'Novo Contrato'}
+                            </h2>
+                            <p className="text-sm text-slate-500">Preencha os dados do negócio.</p>
                         </div>
-                        <div>
-                            <label className="block text-sm font-medium text-slate-700 mb-1">Safra</label>
-                            <input 
-                                type="text" 
-                                className="w-full rounded-lg border border-slate-300 p-2.5"
-                                value={formData.crop}
-                                onChange={(e) => setFormData({...formData, crop: e.target.value})}
-                            />
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-slate-700 mb-1">Nº Contrato</label>
-                            <input 
-                                type="text" 
-                                readOnly
-                                className="w-full rounded-lg border border-slate-300 bg-slate-100 text-slate-500 p-2.5 font-mono"
-                                value={formData.number}
-                            />
-                        </div>
+                        <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-slate-600"><X className="w-6 h-6" /></button>
+                  </div>
+                  
+                  {/* Content - Scrollable */}
+                  <div className="flex-1 overflow-y-auto p-8 space-y-8 bg-slate-50">
+                      
+                      {/* Section 1: Basic Info */}
+                      <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+                          <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2 text-sm uppercase"><FileText className="w-4 h-4 text-slate-400"/> Dados Gerais</h3>
+                          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                              <div>
+                                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Número</label>
+                                  <input type="text" disabled value={formData.number || ''} className="w-full bg-slate-100 border border-slate-300 rounded p-2 text-slate-600 cursor-not-allowed" />
+                              </div>
+                              <div>
+                                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Data Negócio</label>
+                                  <input type="date" value={formData.closingDate || ''} onChange={(e) => setFormData({...formData, closingDate: e.target.value})} className="w-full border border-slate-300 rounded p-2" />
+                              </div>
+                              <div>
+                                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Produto</label>
+                                  <select value={formData.product} onChange={(e) => handleProductChange(e.target.value as any)} className="w-full border border-slate-300 rounded p-2 bg-white">
+                                      <option value="SOJA">SOJA</option>
+                                      <option value="MILHO">MILHO</option>
+                                      <option value="TRIGO">TRIGO</option>
+                                  </select>
+                              </div>
+                              <div>
+                                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Safra</label>
+                                  <input 
+                                    type="text" 
+                                    value={formData.crop || ''} 
+                                    onChange={(e) => setFormData({...formData, crop: e.target.value})} 
+                                    onBlur={(e) => handleCropChangeBlur(e.target.value)}
+                                    className="w-full border border-slate-300 rounded p-2" 
+                                    placeholder="Ex: 24/25" 
+                                  />
+                              </div>
+                          </div>
+                      </div>
 
-                        {/* NEW: Closing Date */}
-                        <div className="bg-amber-50 p-2 rounded-lg border border-amber-200">
-                             <label className="block text-xs font-bold text-amber-800 uppercase mb-1">Data Fechamento</label>
-                             <input 
-                                type="date" 
-                                className="w-full rounded border border-amber-300 p-1.5 text-sm bg-white"
-                                value={formData.closingDate || ''}
-                                onChange={(e) => setFormData({...formData, closingDate: e.target.value})}
-                            />
-                        </div>
-
-                        {/* Volume Inputs (Sacas / Tons) */}
-                        <div className="md:col-span-1 grid grid-cols-2 gap-2 bg-slate-50 p-2 rounded-lg border border-slate-200">
-                             <div>
-                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Sacas (60kg)</label>
-                                <input 
-                                    type="number" 
-                                    className="w-full rounded border border-slate-300 p-1.5 text-sm"
-                                    placeholder="0"
-                                    value={formData.totalBags || ''}
-                                    onChange={(e) => handleVolumeChange(e.target.value, 'BAGS')}
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Toneladas</label>
-                                <div className="relative">
-                                     <input 
-                                        type="number" 
-                                        className="w-full rounded border border-slate-300 p-1.5 text-sm"
-                                        placeholder="0.00"
-                                        value={formData.totalTons || ''}
-                                        onChange={(e) => handleVolumeChange(e.target.value, 'TONS')}
-                                    />
-                                    <Calculator className="w-3 h-3 text-emerald-400 absolute right-1.5 top-2.5" />
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Seller / Buyer */}
-                        <div className="md:col-span-2">
-                            <label className="block text-sm font-medium text-slate-700 mb-1">Vendedor (Produtor)</label>
-                            <select 
-                                className="w-full rounded-lg border border-slate-300 p-2.5 bg-white"
-                                value={formData.sellerName || ''}
-                                onChange={(e) => handleSellerChange(e.target.value)}
-                            >
-                                <option value="">Selecione o Produtor</option>
-                                {producersList.map(p => (
-                                    <option key={p.id} value={p.name}>{p.name}</option>
-                                ))}
-                            </select>
-                            {/* Hidden Doc Display for Verification */}
-                            {formData.sellerDoc && <p className="text-[10px] text-slate-400 mt-1 ml-1">Vinculado ao CPF/CNPJ: {formData.sellerDoc}</p>}
-                        </div>
-                        <div className="md:col-span-1">
-                            <label className="block text-sm font-medium text-slate-700 mb-1">Comprador (Trading/Fábrica)</label>
-                             <select 
-                                className="w-full rounded-lg border border-slate-300 p-2.5 bg-white"
-                                value={formData.buyerName || ''}
-                                onChange={(e) => handleBuyerChange(e.target.value)}
-                            >
-                                <option value="">Selecione o Comprador</option>
-                                {buyersList.map(b => (
-                                    <option key={b.id} value={b.name}>{b.name}</option>
-                                ))}
-                            </select>
-                            {formData.buyerDoc && <p className="text-[10px] text-slate-400 mt-1 ml-1">Vinculado ao CNPJ: {formData.buyerDoc}</p>}
-                        </div>
-                    </div>
-                </section>
-                
-                {/* 2. Pricing & Payment (No changes needed, but context maintained) */}
-                 <section className="pt-4 border-t border-slate-100">
-                    <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wide mb-4">Preço e Pagamento</h3>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                        <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
-                            {/* Pricing Mode UI ... (omitted for brevity, unchanged) */}
-                            <div className="flex justify-between mb-4">
-                                <label className="text-sm font-bold text-slate-700">Modo de Precificação</label>
-                                <div className="flex bg-white rounded p-0.5 border border-slate-200">
-                                    <button 
-                                        className={`px-2 py-1 text-xs font-bold rounded ${formData.pricingMode === PricingMode.FIXED ? 'bg-emerald-500 text-white' : 'text-slate-500'}`}
-                                        onClick={() => setFormData({...formData, pricingMode: PricingMode.FIXED})}
-                                    >FIXO</button>
-                                    <button 
-                                        className={`px-2 py-1 text-xs font-bold rounded ${formData.pricingMode === PricingMode.COMPONENTS ? 'bg-emerald-500 text-white' : 'text-slate-500'}`}
-                                        onClick={() => setFormData({...formData, pricingMode: PricingMode.COMPONENTS})}
-                                    >COMP</button>
-                                </div>
-                            </div>
-
-                            {formData.pricingMode === PricingMode.FIXED ? (
+                      {/* Section 2: Parties */}
+                      <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+                           <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2 text-sm uppercase"><Sprout className="w-4 h-4 text-slate-400"/> Participantes</h3>
+                           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 <div>
-                                    <label className="block text-xs text-slate-500 uppercase font-bold mb-1">Preço Fixo (R$/sc)</label>
+                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Vendedor (Produtor)</label>
                                     <input 
-                                        type="number" 
-                                        className="w-full text-xl font-bold text-emerald-700 border-b-2 border-emerald-500 bg-transparent outline-none p-1"
-                                        value={formData.basePrice || ''}
-                                        onChange={(e) => setFormData({...formData, basePrice: parseFloat(e.target.value)})}
+                                        list="producers" 
+                                        className="w-full border border-slate-300 rounded p-2" 
+                                        placeholder="Buscar Produtor..."
+                                        value={formData.sellerName || ''}
+                                        onChange={(e) => handleSellerChange(e.target.value)}
                                     />
+                                    <datalist id="producers">
+                                        {producersList.map(p => <option key={p.id} value={p.name} />)}
+                                    </datalist>
+                                    {formData.sellerDoc && <p className="text-xs text-slate-400 mt-1">CPF/CNPJ: {formData.sellerDoc}</p>}
                                 </div>
-                            ) : (
-                                <div className="space-y-3">
-                                    <div className="grid grid-cols-2 gap-2">
-                                        <div>
-                                            <label className="text-[10px] uppercase text-slate-500 font-bold">CBOT (Pts)</label>
-                                            <input type="number" className="w-full border rounded p-1 text-sm" value={formData.cbotComponent || ''} onChange={(e) => setFormData({...formData, cbotComponent: parseFloat(e.target.value)})} />
-                                        </div>
-                                         <div>
-                                            <label className="text-[10px] uppercase text-slate-500 font-bold">Basis (Pts)</label>
-                                            <input type="number" className="w-full border rounded p-1 text-sm" value={formData.basisComponent || ''} onChange={(e) => setFormData({...formData, basisComponent: parseFloat(e.target.value)})} />
-                                        </div>
-                                    </div>
-                                    <div>
-                                         <label className="text-[10px] uppercase text-slate-500 font-bold">Custos (R$/sc)</label>
-                                         <input type="number" className="w-full border rounded p-1 text-sm" value={formData.costComponent || ''} onChange={(e) => setFormData({...formData, costComponent: parseFloat(e.target.value)})} />
-                                    </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Comprador</label>
+                                    <input 
+                                        list="buyers" 
+                                        className="w-full border border-slate-300 rounded p-2" 
+                                        placeholder="Buscar Comprador..."
+                                        value={formData.buyerName || ''}
+                                        onChange={(e) => handleBuyerChange(e.target.value)}
+                                    />
+                                    <datalist id="buyers">
+                                        {buyersList.map(b => <option key={b.id} value={b.name} />)}
+                                    </datalist>
+                                     {formData.buyerDoc && <p className="text-xs text-slate-400 mt-1">CNPJ: {formData.buyerDoc}</p>}
                                 </div>
-                            )}
+                           </div>
+                      </div>
 
-                             <div className="mt-4 pt-4 border-t border-slate-200">
-                                <div className="flex justify-between items-center">
-                                    <span className="text-sm font-bold text-slate-700">Preço Final</span>
-                                    <span className="text-xl font-black text-slate-800">R$ {calculatedPrice.toFixed(2)}</span>
-                                </div>
-                                <div className="flex items-center gap-2 mt-2">
-                                    <button 
-                                        onClick={() => setFormData({...formData, isFixed: !formData.isFixed})}
-                                        className={`flex-1 py-1.5 text-xs font-bold rounded flex items-center justify-center gap-1 transition-colors ${formData.isFixed ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}
-                                    >
-                                        {formData.isFixed ? <><Lock className="w-3 h-3"/> PREÇO FIXADO</> : <><Unlock className="w-3 h-3"/> A FIXAR</>}
-                                    </button>
-                                </div>
-                             </div>
-                        </div>
-
-                        {/* Payment Terms & Bank Selection */}
-                        <div className="md:col-span-2 space-y-4">
-                            <div className="grid grid-cols-2 gap-4">
+                      {/* Section 3: Logistics */}
+                      <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+                            <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2 text-sm uppercase"><Truck className="w-4 h-4 text-slate-400"/> Logística e Entrega</h3>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
                                 <div>
-                                    <label className="block text-sm font-medium text-slate-700 mb-1">Data Pagamento</label>
-                                    <input type="date" className="w-full border rounded-lg p-2.5" value={formData.paymentDate || ''} onChange={(e) => setFormData({...formData, paymentDate: e.target.value})} />
+                                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Volume (Sacas)</label>
+                                  <input type="number" value={formData.totalBags || ''} onChange={(e) => handleVolumeChange(e.target.value, 'BAGS')} className="w-full border border-slate-300 rounded p-2" />
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium text-slate-700 mb-1">Comissão (R$/sc)</label>
-                                    <div className="relative">
-                                        <input type="number" className="w-full border rounded-lg p-2.5 pl-8" value={formData.commissionPerBag || ''} onChange={(e) => setFormData({...formData, commissionPerBag: parseFloat(e.target.value)})} />
-                                        <DollarSign className="w-4 h-4 text-slate-400 absolute left-2.5 top-3.5" />
-                                    </div>
+                                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Volume (Toneladas)</label>
+                                  <input type="number" value={formData.totalTons || ''} onChange={(e) => handleVolumeChange(e.target.value, 'TONS')} className="w-full border border-slate-300 rounded p-2" />
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium text-slate-700 mb-1">Moeda do Contrato</label>
-                                    <select className="w-full border rounded-lg p-2.5 bg-white" value={formData.currency} onChange={(e) => setFormData({...formData, currency: e.target.value as any})}>
-                                        <option value="BRL">BRL - Real</option>
-                                        <option value="USD">USD - Dólar</option>
-                                    </select>
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-slate-700 mb-1">Taxa Câmbio (Ref)</label>
-                                    <input type="number" className="w-full border rounded-lg p-2.5" value={formData.exchangeRate || ''} onChange={(e) => setFormData({...formData, exchangeRate: parseFloat(e.target.value)})} />
+                                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Modalidade</label>
+                                  <select value={formData.freightType} onChange={(e) => setFormData({...formData, freightType: e.target.value as any})} className="w-full border border-slate-300 rounded p-2 bg-white">
+                                      <option value="FOB">FOB (Retira)</option>
+                                      <option value="CIF">CIF (Entrega)</option>
+                                  </select>
                                 </div>
                             </div>
 
-                            {/* BANK ACCOUNT SELECTION (NEW) */}
-                            <div className="bg-emerald-50 p-3 rounded-lg border border-emerald-100">
-                                <label className="flex items-center gap-2 text-sm font-bold text-emerald-800 mb-2">
-                                    <Banknote className="w-4 h-4" /> Conta Bancária do Vendedor
-                                </label>
-                                {availableAccounts.length === 0 ? (
-                                    <p className="text-sm text-red-500 italic">O produtor não possui contas bancárias cadastradas. Cadastre em "Cadastros".</p>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Local de Embarque / Retirada</label>
+                                    {isNewLocation ? (
+                                        <div className="flex gap-2">
+                                            <input type="text" className="w-full border border-slate-300 rounded p-2" placeholder="Digite o local..." value={formData.pickupLocation || ''} onChange={(e) => setFormData({...formData, pickupLocation: e.target.value})} />
+                                            {availableLocations.length > 0 && (
+                                                <button onClick={() => setIsNewLocation(false)} className="whitespace-nowrap px-3 py-2 text-xs bg-slate-100 hover:bg-slate-200 rounded text-slate-600">
+                                                    Selecionar Existente
+                                                </button>
+                                            )}
+                                        </div>
+                                    ) : (
+                                        <div className="flex gap-2">
+                                            <select 
+                                                className="w-full border border-slate-300 rounded p-2 bg-white" 
+                                                value={formData.pickupLocation || ''} 
+                                                onChange={(e) => {
+                                                    if(e.target.value === 'NEW') setIsNewLocation(true);
+                                                    else setFormData({...formData, pickupLocation: e.target.value});
+                                                }}
+                                            >
+                                                <option value="">Selecione...</option>
+                                                {availableLocations.map(l => <option key={l.id} value={l.name}>{l.name}</option>)}
+                                                <option value="NEW">+ Outro Local</option>
+                                            </select>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                            
+                            <hr className="border-slate-100 my-4" />
+                            
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Início do Embarque</label>
+                                    <div className="flex items-center gap-2 mb-2">
+                                        <input type="checkbox" id="immediate" checked={isImmediate} onChange={(e) => setIsImmediate(e.target.checked)} className="rounded text-emerald-600 focus:ring-emerald-500" />
+                                        <label htmlFor="immediate" className="text-sm text-slate-700">Imediato</label>
+                                    </div>
+                                    {!isImmediate && (
+                                        <div className="flex gap-2">
+                                            <select value={startFortnight} onChange={(e) => setStartFortnight(e.target.value as any)} className="border rounded p-2 text-sm bg-white">
+                                                <option value="1">1ª Quinzena</option>
+                                                <option value="2">2ª Quinzena</option>
+                                            </select>
+                                            <select value={startMonth} onChange={(e) => setStartMonth(Number(e.target.value))} className="border rounded p-2 text-sm bg-white flex-1">
+                                                {MONTHS.map((m, i) => <option key={i} value={i}>{m}</option>)}
+                                            </select>
+                                            <select value={startYear} onChange={(e) => setStartYear(Number(e.target.value))} className="border rounded p-2 text-sm bg-white w-24">
+                                                {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
+                                            </select>
+                                        </div>
+                                    )}
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Fim do Embarque</label>
+                                    <div className="h-[28px] mb-2"></div> {/* Spacer to align with checkbox */}
+                                    <div className="flex gap-2">
+                                        <select value={endFortnight} onChange={(e) => setEndFortnight(e.target.value as any)} className="border rounded p-2 text-sm bg-white">
+                                            <option value="1">1ª Quinzena</option>
+                                            <option value="2">2ª Quinzena</option>
+                                        </select>
+                                        <select value={endMonth} onChange={(e) => setEndMonth(Number(e.target.value))} className="border rounded p-2 text-sm bg-white flex-1">
+                                            {MONTHS.map((m, i) => <option key={i} value={i}>{m}</option>)}
+                                        </select>
+                                        <select value={endYear} onChange={(e) => setEndYear(Number(e.target.value))} className="border rounded p-2 text-sm bg-white w-24">
+                                            {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                      </div>
+
+                      {/* Section 4: Pricing */}
+                      <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+                           <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2 text-sm uppercase"><DollarSign className="w-4 h-4 text-slate-400"/> Preço e Pagamento</h3>
+                           
+                           <div className="flex gap-4 mb-6 bg-slate-50 p-2 rounded-lg w-fit">
+                               <button 
+                                  onClick={() => setFormData({...formData, pricingMode: PricingMode.FIXED, isFixed: true})}
+                                  className={`px-4 py-2 rounded text-sm font-medium transition-colors ${formData.pricingMode === PricingMode.FIXED ? 'bg-white shadow text-emerald-700' : 'text-slate-500 hover:text-slate-700'}`}
+                               >
+                                   Preço Fixo
+                               </button>
+                               <button 
+                                  onClick={() => setFormData({...formData, pricingMode: PricingMode.COMPONENTS, isFixed: false})}
+                                  className={`px-4 py-2 rounded text-sm font-medium transition-colors ${formData.pricingMode === PricingMode.COMPONENTS ? 'bg-white shadow text-blue-700' : 'text-slate-500 hover:text-slate-700'}`}
+                               >
+                                   A Fixar (Componentes)
+                               </button>
+                           </div>
+
+                           <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                                {formData.pricingMode === PricingMode.FIXED ? (
+                                    <div className="col-span-2">
+                                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Preço Fixo (R$/sc)</label>
+                                        <input type="number" step="0.01" value={formData.basePrice || ''} onChange={(e) => setFormData({...formData, basePrice: Number(e.target.value), isFixed: true})} className="w-full border border-slate-300 rounded p-2 text-lg font-bold text-slate-800" />
+                                    </div>
                                 ) : (
+                                    <>
+                                        <div>
+                                            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">CBOT (¢/bu)</label>
+                                            <input type="number" step="0.01" value={formData.cbotComponent || ''} onChange={(e) => setFormData({...formData, cbotComponent: Number(e.target.value)})} className="w-full border border-slate-300 rounded p-2" />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Basis (pts)</label>
+                                            <input type="number" step="0.01" value={formData.basisComponent || ''} onChange={(e) => setFormData({...formData, basisComponent: Number(e.target.value)})} className="w-full border border-slate-300 rounded p-2" />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Dólar (R$)</label>
+                                            <input type="number" step="0.0001" value={formData.exchangeRate || ''} onChange={(e) => setFormData({...formData, exchangeRate: Number(e.target.value)})} className="w-full border border-slate-300 rounded p-2" />
+                                        </div>
+                                    </>
+                                )}
+                                <div className="col-span-1 bg-slate-50 p-4 rounded border border-slate-200">
+                                    <p className="text-xs font-bold text-slate-500 uppercase">Preço Final Calculado</p>
+                                    <p className="text-2xl font-bold text-emerald-700 mt-1">R$ {calculatedPrice.toFixed(2)}</p>
+                                    <p className="text-xs text-slate-400">por saca</p>
+                                </div>
+                           </div>
+
+                           <hr className="border-slate-100 my-6" />
+
+                           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Data de Pagamento</label>
+                                    <input type="date" value={formData.paymentDate || ''} onChange={(e) => setFormData({...formData, paymentDate: e.target.value})} className="w-full border border-slate-300 rounded p-2" />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Comissão (R$/sc)</label>
+                                    <input type="number" step="0.01" value={formData.commissionPerBag || ''} onChange={(e) => setFormData({...formData, commissionPerBag: Number(e.target.value)})} className="w-full border border-slate-300 rounded p-2" />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Conta para Pagamento</label>
                                     <select 
-                                        className="w-full border border-emerald-200 rounded p-2 text-sm bg-white"
+                                        className="w-full border border-slate-300 rounded p-2 bg-white"
                                         value={formData.sellerBankDetails ? JSON.stringify(formData.sellerBankDetails) : ''}
                                         onChange={(e) => {
-                                            if(e.target.value) {
-                                                const bank = JSON.parse(e.target.value);
-                                                setFormData({...formData, sellerBankDetails: bank});
-                                            }
+                                            const val = e.target.value;
+                                            setFormData({...formData, sellerBankDetails: val ? JSON.parse(val) : undefined});
                                         }}
                                     >
-                                        {availableAccounts.map((acc, idx) => (
-                                            <option key={idx} value={JSON.stringify(acc)}>
-                                                {acc.bankName} - Ag: {acc.agency} CC: {acc.account} ({acc.holder})
+                                        <option value="">Selecione a conta...</option>
+                                        {availableAccounts.map((acc, i) => (
+                                            <option key={i} value={JSON.stringify(acc)}>
+                                                {acc.bankName} - {acc.account}
                                             </option>
                                         ))}
                                     </select>
-                                )}
-                            </div>
-                        </div>
-                    </div>
-                </section>
-
-                {/* 3. Logistics */}
-                <section className="pt-4 border-t border-slate-100">
-                    <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wide mb-4">Logística de Retirada</h3>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div>
-                            <label className="block text-sm font-medium text-slate-700 mb-1">Modalidade Frete</label>
-                            <div className="flex gap-4 mt-2">
-                                <label className="flex items-center gap-2 cursor-pointer border p-3 rounded-lg w-full hover:bg-slate-50">
-                                    <input type="radio" name="freight" checked={formData.freightType === 'FOB'} onChange={() => setFormData({...formData, freightType: 'FOB'})} className="text-emerald-600 focus:ring-emerald-500" />
-                                    <div>
-                                        <span className="block font-bold text-slate-800">FOB</span>
-                                        <span className="text-xs text-slate-500">Retira na Fazenda</span>
-                                    </div>
-                                </label>
-                                <label className="flex items-center gap-2 cursor-pointer border p-3 rounded-lg w-full hover:bg-slate-50">
-                                    <input type="radio" name="freight" checked={formData.freightType === 'CIF'} onChange={() => setFormData({...formData, freightType: 'CIF'})} className="text-emerald-600 focus:ring-emerald-500" />
-                                    <div>
-                                        <span className="block font-bold text-slate-800">CIF</span>
-                                        <span className="text-xs text-slate-500">Entregue no Destino</span>
-                                    </div>
-                                </label>
-                            </div>
-                        </div>
-
-                         <div>
-                            <label className="block text-sm font-medium text-slate-700 mb-1">Local de Embarque (Fazenda)</label>
-                            {isNewLocation ? (
-                                <div className="flex gap-2">
-                                    <input 
-                                        type="text" 
-                                        className="w-full border rounded-lg p-2.5" 
-                                        placeholder="Digite o nome da fazenda..."
-                                        value={formData.pickupLocation || ''} 
-                                        onChange={(e) => setFormData({...formData, pickupLocation: e.target.value})} 
-                                    />
-                                    <button onClick={() => setIsNewLocation(false)} className="text-slate-400 hover:text-slate-600 whitespace-nowrap text-xs">
-                                        Selecionar da Lista
-                                    </button>
+                                    {availableAccounts.length === 0 && <p className="text-xs text-red-400 mt-1">Nenhuma conta cadastrada para este produtor.</p>}
                                 </div>
-                            ) : (
-                                <div className="flex gap-2">
-                                    <select 
-                                        className="w-full border rounded-lg p-2.5 bg-white"
-                                        value={formData.pickupLocation || ''}
-                                        onChange={(e) => {
-                                            if(e.target.value === 'NEW') setIsNewLocation(true);
-                                            else setFormData({...formData, pickupLocation: e.target.value});
-                                        }}
-                                    >
-                                        {availableLocations.map(l => (
-                                            <option key={l.id} value={l.name}>{l.name}</option>
-                                        ))}
-                                        <option value="NEW">+ Cadastrar Novo Local</option>
-                                    </select>
-                                </div>
-                            )}
-                        </div>
+                           </div>
+                      </div>
+                      
+                      {/* Section 5: Observations */}
+                      <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+                           <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2 text-sm uppercase"><FileText className="w-4 h-4 text-slate-400"/> Observações</h3>
+                           <textarea 
+                                className="w-full border border-slate-300 rounded p-3 h-24 text-sm" 
+                                placeholder="Observações adicionais do contrato..."
+                                value={formData.observation || ''}
+                                onChange={(e) => setFormData({...formData, observation: e.target.value})}
+                           />
+                      </div>
 
-                        <div className="md:col-span-2">
-                             <label className="block text-sm font-medium text-slate-700 mb-3">Período de Embarque</label>
-                             <div className="flex flex-wrap items-center gap-4 bg-slate-50 p-4 rounded-lg border border-slate-200">
-                                {/* Start Date Selector */}
-                                <div className="flex items-center gap-2">
-                                    <span className="text-sm font-bold text-slate-600">INÍCIO:</span>
-                                    <select 
-                                        className="border rounded p-1.5 text-sm bg-white"
-                                        value={isImmediate ? 'IMEDIATO' : startFortnight}
-                                        onChange={(e) => {
-                                            if (e.target.value === 'IMEDIATO') setIsImmediate(true);
-                                            else {
-                                                setIsImmediate(false);
-                                                setStartFortnight(e.target.value as any);
-                                            }
-                                        }}
-                                    >
-                                        <option value="IMEDIATO">Imediato</option>
-                                        <option value="1">1ª Quinzena</option>
-                                        <option value="2">2ª Quinzena</option>
-                                    </select>
-                                    {!isImmediate && (
-                                        <>
-                                            <select 
-                                                className="border rounded p-1.5 text-sm bg-white"
-                                                value={startMonth}
-                                                onChange={(e) => setStartMonth(parseInt(e.target.value))}
-                                            >
-                                                {MONTHS.map((m, i) => <option key={i} value={i}>{m}</option>)}
-                                            </select>
-                                            <select 
-                                                className="border rounded p-1.5 text-sm bg-white"
-                                                value={startYear}
-                                                onChange={(e) => setStartYear(parseInt(e.target.value))}
-                                            >
-                                                {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
-                                            </select>
-                                        </>
-                                    )}
-                                </div>
-
-                                <span className="text-slate-400">Até</span>
-
-                                {/* End Date Selector */}
-                                 <div className="flex items-center gap-2">
-                                    <span className="text-sm font-bold text-slate-600">FIM:</span>
-                                    <select 
-                                        className="border rounded p-1.5 text-sm bg-white"
-                                        value={endFortnight}
-                                        onChange={(e) => setEndFortnight(e.target.value as any)}
-                                    >
-                                        <option value="1">1ª Quinzena</option>
-                                        <option value="2">2ª Quinzena</option>
-                                    </select>
-                                    <select 
-                                        className="border rounded p-1.5 text-sm bg-white"
-                                        value={endMonth}
-                                        onChange={(e) => setEndMonth(parseInt(e.target.value))}
-                                    >
-                                        {MONTHS.map((m, i) => <option key={i} value={i}>{m}</option>)}
-                                    </select>
-                                    <select 
-                                        className="border rounded p-1.5 text-sm bg-white"
-                                        value={endYear}
-                                        onChange={(e) => setEndYear(parseInt(e.target.value))}
-                                    >
-                                        {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
-                                    </select>
-                                </div>
-                             </div>
-                        </div>
-                    </div>
-                </section>
-
-                {/* 4. Observations */}
-                <section className="pt-4 border-t border-slate-100">
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Observações do Contrato</label>
-                    <textarea 
-                        className="w-full border rounded-lg p-3 h-24" 
-                        placeholder="Detalhes adicionais, instruções de pagamento, qualidade..."
-                        value={formData.observation || ''}
-                        onChange={(e) => setFormData({...formData,observation: e.target.value})}
-                    ></textarea>
-                </section>
-                
-                <div className="p-6 border-t border-slate-100 flex justify-end gap-3 bg-slate-50 rounded-b-xl sticky bottom-0">
-                    <button onClick={() => setIsModalOpen(false)} className="px-5 py-2 text-slate-600 hover:bg-slate-200 rounded-lg">Cancelar</button>
-                    <button onClick={handleSave} disabled={isLoading} className="px-5 py-2 bg-emerald-600 text-white font-medium rounded-lg hover:bg-emerald-700 shadow-sm flex items-center">
-                        {isLoading && <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin mr-2"></div>}
-                        Salvar Contrato
-                    </button>
-                </div>
-            </div>
+                  </div>
+                  
+                  {/* Footer Actions */}
+                  <div className="p-4 border-t bg-white flex justify-end gap-3 rounded-b-xl">
+                      <button onClick={() => setIsModalOpen(false)} className="px-6 py-2 text-slate-600 hover:bg-slate-50 rounded font-medium border border-transparent hover:border-slate-200">
+                          Cancelar
+                      </button>
+                      <button onClick={handleSave} disabled={isLoading} className="px-6 py-2 bg-emerald-600 text-white rounded font-medium hover:bg-emerald-700 shadow-sm flex items-center gap-2 disabled:opacity-50">
+                          {isLoading && <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>}
+                          Salvar Contrato
+                      </button>
+                  </div>
+              </div>
           </div>
-        </div>
+      )}
+
+      {/* --- PRINT PREVIEW --- */}
+      {printData && (
+          <PrintIsolation onClose={() => setPrintData(null)} title={printData.type === 'SINGLE' ? `Contrato ${printData.data.number}` : 'Relatório de Contratos'}>
+              {printData.type === 'SINGLE' ? (
+                  <ContractDocument contract={printData.data} />
+              ) : (
+                  <div className="bg-white p-8 w-[297mm] min-h-[210mm] mx-auto">
+                      <div className="flex justify-between items-center mb-6 border-b-2 border-slate-800 pb-4">
+                           <div className="flex items-center gap-4">
+                                <img src={LOGO_URL} alt="Logo" className="h-12 w-auto" />
+                                <div>
+                                    <h1 className="text-xl font-bold uppercase text-slate-900">{getReportTitle()}</h1>
+                                    <p className="text-sm text-slate-500">Emitido em {new Date().toLocaleDateString()} às {new Date().toLocaleTimeString()}</p>
+                                </div>
+                           </div>
+                      </div>
+                      <table className="w-full text-xs text-left border-collapse">
+                          <thead>
+                              <tr className="bg-slate-100 border-b border-slate-300">
+                                  <th className="p-2 border">Data</th>
+                                  <th className="p-2 border">Número</th>
+                                  <th className="p-2 border">Vendedor</th>
+                                  <th className="p-2 border">Comprador</th>
+                                  <th className="p-2 border text-right">Sacas</th>
+                                  <th className="p-2 border text-right">Preço</th>
+                                  <th className="p-2 border">Local Retirada</th>
+                              </tr>
+                          </thead>
+                          <tbody>
+                              {(printData.data as Contract[]).map((c, i) => (
+                                  <tr key={i} className="border-b border-slate-200">
+                                      <td className="p-2 border">{new Date(c.createdAt).toLocaleDateString()}</td>
+                                      <td className="p-2 border font-bold">{c.number}</td>
+                                      <td className="p-2 border truncate max-w-[150px]">{c.sellerName}</td>
+                                      <td className="p-2 border truncate max-w-[150px]">{c.buyerName}</td>
+                                      <td className="p-2 border text-right">{c.totalBags.toLocaleString()}</td>
+                                      <td className="p-2 border text-right">{c.finalPrice.toFixed(2)}</td>
+                                      <td className="p-2 border truncate max-w-[150px]">{c.pickupLocation}</td>
+                                  </tr>
+                              ))}
+                          </tbody>
+                          <tfoot>
+                              <tr className="bg-slate-50 font-bold border-t-2 border-slate-800">
+                                  <td colSpan={4} className="p-2 text-right">TOTAIS:</td>
+                                  <td className="p-2 text-right">{(printData.data as Contract[]).reduce((sum, c) => sum + c.totalBags, 0).toLocaleString()}</td>
+                                  <td colSpan={2}></td>
+                              </tr>
+                          </tfoot>
+                      </table>
+                  </div>
+              )}
+          </PrintIsolation>
       )}
     </div>
   );
