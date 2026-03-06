@@ -228,84 +228,88 @@ export const Registries: React.FC = () => {
       {/* CONTENT: PRODUCERS */}
       {activeTab === 'producers' && (
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-            <table className="w-full text-left text-sm text-slate-600">
-                <thead className="bg-slate-50 border-b border-slate-200 text-slate-800 font-semibold">
-                    <tr>
-                        <th className="px-6 py-4">Produtor</th>
-                        <th className="px-6 py-4">Documento / I.E.</th>
-                        <th className="px-6 py-4">Região</th>
-                        <th className="px-6 py-4">Fazendas</th>
-                        <th className="px-6 py-4">Funrural</th>
-                        <th className="px-6 py-4 text-right">Ações</th>
-                    </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                    {filteredProducers.map(p => (
-                        <tr key={p.id} className="hover:bg-slate-50">
-                            <td className="px-6 py-4 font-medium text-slate-900">{p.name}</td>
-                            <td className="px-6 py-4">
-                                <div>{p.doc}</div>
-                                <div className="text-xs text-slate-400">IE: {p.stateInsc}</div>
-                            </td>
-                            <td className="px-6 py-4">{p.region}</td>
-                            <td className="px-6 py-4">
-                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800">
-                                    {p.farms?.length || 0} locais
-                                </span>
-                            </td>
-                            <td className="px-6 py-4 text-xs font-mono font-bold text-slate-600">
-                                {getFunruralLabel(p.funruralType)}
-                            </td>
-                            <td className="px-6 py-4 text-right flex justify-end gap-2">
-                                <button onClick={() => setViewingProducer(p)} className="text-slate-400 hover:text-blue-600" title="Ver Detalhes"><Eye className="w-4 h-4" /></button>
-                                <button onClick={() => handleEditProducer(p)} className="text-slate-400 hover:text-emerald-600" title="Editar"><Edit2 className="w-4 h-4" /></button>
-                                <button onClick={() => handleDeleteProducer(p.id)} className="text-slate-400 hover:text-red-600" title="Excluir"><Trash2 className="w-4 h-4" /></button>
-                            </td>
+            <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm text-slate-600">
+                    <thead className="bg-slate-50 border-b border-slate-200 text-slate-800 font-semibold">
+                        <tr>
+                            <th className="px-6 py-4">Produtor</th>
+                            <th className="px-6 py-4">Documento / I.E.</th>
+                            <th className="px-6 py-4">Região</th>
+                            <th className="px-6 py-4">Fazendas</th>
+                            <th className="px-6 py-4">Funrural</th>
+                            <th className="px-6 py-4 text-right">Ações</th>
                         </tr>
-                    ))}
-                </tbody>
-            </table>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                        {filteredProducers.map(p => (
+                            <tr key={p.id} className="hover:bg-slate-50">
+                                <td className="px-6 py-4 font-medium text-slate-900">{p.name}</td>
+                                <td className="px-6 py-4">
+                                    <div>{p.doc}</div>
+                                    <div className="text-xs text-slate-400">IE: {p.stateInsc}</div>
+                                </td>
+                                <td className="px-6 py-4">{p.region}</td>
+                                <td className="px-6 py-4">
+                                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800">
+                                        {p.farms?.length || 0} locais
+                                    </span>
+                                </td>
+                                <td className="px-6 py-4 text-xs font-mono font-bold text-slate-600">
+                                    {getFunruralLabel(p.funruralType)}
+                                </td>
+                                <td className="px-6 py-4 text-right flex justify-end gap-2">
+                                    <button onClick={() => setViewingProducer(p)} className="text-slate-400 hover:text-blue-600" title="Ver Detalhes"><Eye className="w-4 h-4" /></button>
+                                    <button onClick={() => handleEditProducer(p)} className="text-slate-400 hover:text-emerald-600" title="Editar"><Edit2 className="w-4 h-4" /></button>
+                                    <button onClick={() => handleDeleteProducer(p.id)} className="text-slate-400 hover:text-red-600" title="Excluir"><Trash2 className="w-4 h-4" /></button>
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
         </div>
       )}
 
       {/* CONTENT: BUYERS */}
       {activeTab === 'buyers' && (
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-             <table className="w-full text-left text-sm text-slate-600">
-                <thead className="bg-slate-50 border-b border-slate-200 text-slate-800 font-semibold">
-                    <tr>
-                        <th className="px-6 py-4">Comprador</th>
-                        <th className="px-6 py-4">Documento / I.E.</th>
-                        <th className="px-6 py-4">Endereço</th>
-                        <th className="px-6 py-4">Tipo</th>
-                        <th className="px-6 py-4 text-right">Ações</th>
-                    </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                    {filteredBuyers.map(b => (
-                        <tr key={b.id} className="hover:bg-slate-50">
-                            <td className="px-6 py-4 font-medium text-slate-900">{b.name}</td>
-                            <td className="px-6 py-4">
-                                <div>{b.doc}</div>
-                                <div className="text-xs text-slate-400">IE: {b.stateInsc}</div>
-                            </td>
-                            <td className="px-6 py-4 max-w-xs truncate" title={b.address}>{b.address}</td>
-                            <td className="px-6 py-4">
-                                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold border ${
-                                    b.type === 'TRADING' ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-amber-50 text-amber-700 border-amber-200'
-                                }`}>
-                                    {b.type === 'TRADING' ? 'TRADING / EXP' : 'MERCADO INT'}
-                                </span>
-                            </td>
-                            <td className="px-6 py-4 text-right flex justify-end gap-2">
-                                <button onClick={() => setViewingBuyer(b)} className="text-slate-400 hover:text-blue-600" title="Ver Detalhes"><Eye className="w-4 h-4" /></button>
-                                <button onClick={() => handleEditBuyer(b)} className="text-slate-400 hover:text-blue-600" title="Editar"><Edit2 className="w-4 h-4" /></button>
-                                <button onClick={() => handleDeleteBuyer(b.id)} className="text-slate-400 hover:text-red-600" title="Excluir"><Trash2 className="w-4 h-4" /></button>
-                            </td>
+             <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm text-slate-600">
+                    <thead className="bg-slate-50 border-b border-slate-200 text-slate-800 font-semibold">
+                        <tr>
+                            <th className="px-6 py-4">Comprador</th>
+                            <th className="px-6 py-4">Documento / I.E.</th>
+                            <th className="px-6 py-4">Endereço</th>
+                            <th className="px-6 py-4">Tipo</th>
+                            <th className="px-6 py-4 text-right">Ações</th>
                         </tr>
-                    ))}
-                </tbody>
-            </table>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                        {filteredBuyers.map(b => (
+                            <tr key={b.id} className="hover:bg-slate-50">
+                                <td className="px-6 py-4 font-medium text-slate-900">{b.name}</td>
+                                <td className="px-6 py-4">
+                                    <div>{b.doc}</div>
+                                    <div className="text-xs text-slate-400">IE: {b.stateInsc}</div>
+                                </td>
+                                <td className="px-6 py-4 max-w-xs truncate" title={b.address}>{b.address}</td>
+                                <td className="px-6 py-4">
+                                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold border ${
+                                        b.type === 'TRADING' ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-amber-50 text-amber-700 border-amber-200'
+                                    }`}>
+                                        {b.type === 'TRADING' ? 'TRADING / EXP' : 'MERCADO INT'}
+                                    </span>
+                                </td>
+                                <td className="px-6 py-4 text-right flex justify-end gap-2">
+                                    <button onClick={() => setViewingBuyer(b)} className="text-slate-400 hover:text-blue-600" title="Ver Detalhes"><Eye className="w-4 h-4" /></button>
+                                    <button onClick={() => handleEditBuyer(b)} className="text-slate-400 hover:text-blue-600" title="Editar"><Edit2 className="w-4 h-4" /></button>
+                                    <button onClick={() => handleDeleteBuyer(b.id)} className="text-slate-400 hover:text-red-600" title="Excluir"><Trash2 className="w-4 h-4" /></button>
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+             </div>
         </div>
       )}
 

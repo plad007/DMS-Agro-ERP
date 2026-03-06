@@ -227,7 +227,12 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
   };
   
   const handlePrintReport = () => {
+      setIsReportModalOpen(true);
+  };
+
+  const handleGenerateReport = () => {
       setPrintData({ type: 'REPORT', data: reportData });
+      setIsReportModalOpen(false);
   };
 
   const handleSendLink = (contract: Contract) => {
@@ -1162,9 +1167,99 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
           </div>
       )}
 
+      {/* --- REPORT CONFIG MODAL --- */}
+      {isReportModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl flex flex-col max-h-[90vh]">
+                <div className="flex justify-between items-center p-6 border-b border-slate-200">
+                    <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+                        <FileBarChart className="w-6 h-6 text-emerald-600" />
+                        Configurar Relatório
+                    </h2>
+                    <button onClick={() => setIsReportModalOpen(false)} className="text-slate-400 hover:text-slate-600"><X className="w-6 h-6" /></button>
+                </div>
+                
+                <div className="p-6 overflow-y-auto space-y-6">
+                    {/* Filters */}
+                    <div>
+                        <h3 className="font-bold text-slate-700 mb-3 flex items-center gap-2"><Filter className="w-4 h-4"/> Filtros</h3>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Safra</label>
+                                <input type="text" value={reportFilters.crop} onChange={e => setReportFilters({...reportFilters, crop: e.target.value})} className="w-full border rounded p-2 text-sm" placeholder="Todas" />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Produto</label>
+                                <select value={reportFilters.product} onChange={e => setReportFilters({...reportFilters, product: e.target.value})} className="w-full border rounded p-2 text-sm bg-white">
+                                    <option value="">Todos</option>
+                                    <option value="SOJA">SOJA</option>
+                                    <option value="MILHO">MILHO</option>
+                                    <option value="TRIGO">TRIGO</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Vendedor</label>
+                                <input type="text" value={reportFilters.seller} onChange={e => setReportFilters({...reportFilters, seller: e.target.value})} className="w-full border rounded p-2 text-sm" placeholder="Todos" />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Comprador</label>
+                                <input type="text" value={reportFilters.buyer} onChange={e => setReportFilters({...reportFilters, buyer: e.target.value})} className="w-full border rounded p-2 text-sm" placeholder="Todos" />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Status</label>
+                                <select value={reportFilters.status} onChange={e => setReportFilters({...reportFilters, status: e.target.value})} className="w-full border rounded p-2 text-sm bg-white">
+                                    <option value="">Todos</option>
+                                    <option value="RASCUNHO">Rascunho</option>
+                                    <option value="AGUARDANDO ASSINATURA">Aguardando Assinatura</option>
+                                    <option value="ASSINADO">Assinado</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Frete</label>
+                                <select value={reportFilters.freight} onChange={e => setReportFilters({...reportFilters, freight: e.target.value})} className="w-full border rounded p-2 text-sm bg-white">
+                                    <option value="">Todos</option>
+                                    <option value="FOB">FOB</option>
+                                    <option value="CIF">CIF</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <hr className="border-slate-100" />
+
+                    {/* Columns */}
+                    <div>
+                        <h3 className="font-bold text-slate-700 mb-3 flex items-center gap-2"><Settings2 className="w-4 h-4"/> Colunas Visíveis</h3>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                            {Object.entries(reportColumns).map(([key, checked]) => (
+                                <label key={key} className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer hover:text-emerald-700">
+                                    <input 
+                                        type="checkbox" 
+                                        checked={checked} 
+                                        onChange={() => toggleReportColumn(key as any)}
+                                        className="rounded text-emerald-600 focus:ring-emerald-500"
+                                    />
+                                    <span className="capitalize">{key.replace(/([A-Z])/g, ' $1').trim()}</span>
+                                </label>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+
+                <div className="p-4 border-t bg-slate-50 flex justify-end gap-3 rounded-b-xl">
+                    <button onClick={() => setIsReportModalOpen(false)} className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded font-medium">Cancelar</button>
+                    <button onClick={handleGenerateReport} className="px-4 py-2 bg-emerald-600 text-white rounded font-medium hover:bg-emerald-700 shadow-sm flex items-center gap-2">
+                        <Printer className="w-4 h-4" />
+                        Gerar Relatório
+                    </button>
+                </div>
+            </div>
+        </div>
+      )}
+
       {/* --- PRINT PREVIEW --- */}
       {printData && (
-          <PrintIsolation onClose={() => setPrintData(null)} title={printData.type === 'SINGLE' ? `Contrato ${printData.data.number}` : 'Relatório de Contratos'}>
+          <PrintIsolation onClose={() => setPrintData(null)} title={printData.type === 'SINGLE' ? `Contrato ${printData.data.number} - ${printData.data.buyerName} - ${printData.data.sellerName}` : 'Relatório de Contratos'}>
               {printData.type === 'SINGLE' ? (
                   <ContractDocument contract={printData.data} />
               ) : (
@@ -1181,33 +1276,41 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
                       <table className="w-full text-xs text-left border-collapse">
                           <thead>
                               <tr className="bg-slate-100 border-b border-slate-300">
-                                  <th className="p-2 border">Data</th>
-                                  <th className="p-2 border">Número</th>
-                                  <th className="p-2 border">Vendedor</th>
-                                  <th className="p-2 border">Comprador</th>
-                                  <th className="p-2 border text-right">Sacas</th>
-                                  <th className="p-2 border text-right">Preço</th>
-                                  <th className="p-2 border">Local Retirada</th>
+                                  {reportColumns.date && <th className="p-2 border">Data</th>}
+                                  {reportColumns.contract && <th className="p-2 border">Número</th>}
+                                  {reportColumns.crop && <th className="p-2 border">Safra</th>}
+                                  {reportColumns.seller && <th className="p-2 border">Vendedor</th>}
+                                  {reportColumns.buyer && <th className="p-2 border">Comprador</th>}
+                                  {reportColumns.volume && <th className="p-2 border text-right">Sacas</th>}
+                                  {reportColumns.price && <th className="p-2 border text-right">Preço</th>}
+                                  {reportColumns.status && <th className="p-2 border text-center">Status</th>}
+                                  {reportColumns.freight && <th className="p-2 border text-center">Frete</th>}
+                                  {reportColumns.location && <th className="p-2 border">Local</th>}
+                                  {reportColumns.shipmentPeriod && <th className="p-2 border">Embarque</th>}
                               </tr>
                           </thead>
                           <tbody>
                               {(printData.data as Contract[]).map((c, i) => (
                                   <tr key={i} className="border-b border-slate-200">
-                                      <td className="p-2 border">{new Date(c.createdAt).toLocaleDateString()}</td>
-                                      <td className="p-2 border font-bold">{c.number}</td>
-                                      <td className="p-2 border truncate max-w-[150px]">{c.sellerName}</td>
-                                      <td className="p-2 border truncate max-w-[150px]">{c.buyerName}</td>
-                                      <td className="p-2 border text-right">{c.totalBags.toLocaleString()}</td>
-                                      <td className="p-2 border text-right">{c.finalPrice.toFixed(2)}</td>
-                                      <td className="p-2 border truncate max-w-[150px]">{c.pickupLocation}</td>
+                                      {reportColumns.date && <td className="p-2 border">{new Date(c.createdAt).toLocaleDateString()}</td>}
+                                      {reportColumns.contract && <td className="p-2 border font-bold">{c.number}</td>}
+                                      {reportColumns.crop && <td className="p-2 border">{c.crop}</td>}
+                                      {reportColumns.seller && <td className="p-2 border truncate max-w-[150px]">{c.sellerName}</td>}
+                                      {reportColumns.buyer && <td className="p-2 border truncate max-w-[150px]">{c.buyerName}</td>}
+                                      {reportColumns.volume && <td className="p-2 border text-right">{c.totalBags.toLocaleString()}</td>}
+                                      {reportColumns.price && <td className="p-2 border text-right">{c.finalPrice.toFixed(2)}</td>}
+                                      {reportColumns.status && <td className="p-2 border text-center">{c.status}</td>}
+                                      {reportColumns.freight && <td className="p-2 border text-center">{c.freightType}</td>}
+                                      {reportColumns.location && <td className="p-2 border truncate max-w-[150px]">{c.pickupLocation}</td>}
+                                      {reportColumns.shipmentPeriod && <td className="p-2 border">{getPeriodDisplay(c.shipmentStartDate, c.shipmentEndDate)}</td>}
                                   </tr>
                               ))}
                           </tbody>
                           <tfoot>
                               <tr className="bg-slate-50 font-bold border-t-2 border-slate-800">
-                                  <td colSpan={4} className="p-2 text-right">TOTAIS:</td>
-                                  <td className="p-2 text-right">{(printData.data as Contract[]).reduce((sum, c) => sum + c.totalBags, 0).toLocaleString()}</td>
-                                  <td colSpan={2}></td>
+                                  <td colSpan={[reportColumns.date, reportColumns.contract, reportColumns.crop, reportColumns.seller, reportColumns.buyer].filter(Boolean).length} className="p-2 text-right">TOTAIS:</td>
+                                  {reportColumns.volume && <td className="p-2 text-right">{(printData.data as Contract[]).reduce((sum, c) => sum + c.totalBags, 0).toLocaleString()}</td>}
+                                  <td colSpan={[reportColumns.price, reportColumns.status, reportColumns.freight, reportColumns.location, reportColumns.shipmentPeriod].filter(Boolean).length}></td>
                               </tr>
                           </tfoot>
                       </table>

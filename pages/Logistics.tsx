@@ -178,28 +178,30 @@ export const Logistics: React.FC<LogisticsProps> = ({ contracts, shipments, onUp
             {contractShipments.length === 0 ? (
                 <div className="p-8 text-center text-slate-400">Nenhum embarque registrado.</div>
             ) : (
-                <table className="w-full text-sm text-left">
-                    <thead className="bg-white text-slate-500 border-b border-slate-100">
-                        <tr>
-                            <th className="px-6 py-3 font-medium">Data</th>
-                            <th className="px-6 py-3 font-medium">Placa</th>
-                            <th className="px-6 py-3 font-medium">Ticket</th>
-                            <th className="px-6 py-3 font-medium text-right">Peso (Kg)</th>
-                            <th className="px-6 py-3 font-medium text-right">Sacas</th>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-50">
-                        {contractShipments.map(s => (
-                            <tr key={s.id}>
-                                <td className="px-6 py-3 text-slate-600">{new Date(s.date).toLocaleDateString()}</td>
-                                <td className="px-6 py-3 font-mono font-bold text-slate-700">{s.plate}</td>
-                                <td className="px-6 py-3 text-slate-600">{s.ticketNumber}</td>
-                                <td className="px-6 py-3 text-right">{s.weightKg.toLocaleString()}</td>
-                                <td className="px-6 py-3 text-right font-bold text-emerald-700">{s.bagsCount}</td>
+                <div className="overflow-x-auto">
+                    <table className="w-full text-sm text-left">
+                        <thead className="bg-white text-slate-500 border-b border-slate-100">
+                            <tr>
+                                <th className="px-6 py-3 font-medium">Data</th>
+                                <th className="px-6 py-3 font-medium">Placa</th>
+                                <th className="px-6 py-3 font-medium">Ticket</th>
+                                <th className="px-6 py-3 font-medium text-right">Peso (Kg)</th>
+                                <th className="px-6 py-3 font-medium text-right">Sacas</th>
                             </tr>
-                        ))}
-                    </tbody>
-                </table>
+                        </thead>
+                        <tbody className="divide-y divide-slate-50">
+                            {contractShipments.map(s => (
+                                <tr key={s.id}>
+                                    <td className="px-6 py-3 text-slate-600">{new Date(s.date).toLocaleDateString()}</td>
+                                    <td className="px-6 py-3 font-mono font-bold text-slate-700">{s.plate}</td>
+                                    <td className="px-6 py-3 text-slate-600">{s.ticketNumber}</td>
+                                    <td className="px-6 py-3 text-right">{s.weightKg.toLocaleString()}</td>
+                                    <td className="px-6 py-3 text-right font-bold text-emerald-700">{s.bagsCount}</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
             )}
         </div>
 
