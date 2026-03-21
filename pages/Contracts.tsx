@@ -68,8 +68,11 @@ const PrintIsolation = ({ children, onClose, title }: PrintIsolationProps) => {
 
         // Disparar impressão após carregar estilos (Delay seguro para o CDN do Tailwind)
         const timer = setTimeout(() => {
+            const originalTitle = document.title;
+            document.title = title;
             contentRef.contentWindow?.focus();
             contentRef.contentWindow?.print();
+            document.title = originalTitle;
         }, 1500);
 
         return () => clearTimeout(timer);
@@ -680,7 +683,7 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
                     </div>
                     <div className="flex p-1 items-center">
                         <span className="font-bold w-24">Preço:</span>
-                        <span>R$ {contract.finalPrice.toFixed(2)} por saca (Livre de Funrural).</span>
+                        <span>{contract.currency === 'USD' ? 'US$' : 'R$'} {contract.finalPrice.toFixed(2)} por saca (Livre de Funrural).</span>
                     </div>
                 </div>
 
@@ -841,7 +844,7 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
                                 <div className="text-xs text-slate-400">{contract.totalTons.toLocaleString()} ton</div>
                             </td>
                             <td className="px-6 py-4 text-right">
-                                <div className="font-bold text-emerald-700">R$ {contract.finalPrice.toFixed(2)}</div>
+                                <div className="font-bold text-emerald-700">{contract.currency === 'USD' ? 'US$' : 'R$'} {contract.finalPrice.toFixed(2)}</div>
                                 <div className="text-xs text-slate-400">
                                     {contract.isFixed ? 'Fixado' : 'A Fixar'}
                                 </div>
@@ -1063,25 +1066,38 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
                       <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
                            <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2 text-sm uppercase"><DollarSign className="w-4 h-4 text-slate-400"/> Preço e Pagamento</h3>
                            
-                           <div className="flex gap-4 mb-6 bg-slate-50 p-2 rounded-lg w-fit">
-                               <button 
-                                  onClick={() => setFormData({...formData, pricingMode: PricingMode.FIXED, isFixed: true})}
-                                  className={`px-4 py-2 rounded text-sm font-medium transition-colors ${formData.pricingMode === PricingMode.FIXED ? 'bg-white shadow text-emerald-700' : 'text-slate-500 hover:text-slate-700'}`}
-                               >
-                                   Preço Fixo
-                               </button>
-                               <button 
-                                  onClick={() => setFormData({...formData, pricingMode: PricingMode.COMPONENTS, isFixed: false})}
-                                  className={`px-4 py-2 rounded text-sm font-medium transition-colors ${formData.pricingMode === PricingMode.COMPONENTS ? 'bg-white shadow text-blue-700' : 'text-slate-500 hover:text-slate-700'}`}
-                               >
-                                   A Fixar (Componentes)
-                               </button>
+                           <div className="flex flex-wrap gap-4 mb-6">
+                               <div className="flex gap-2 bg-slate-50 p-2 rounded-lg w-fit">
+                                   <button 
+                                      onClick={() => setFormData({...formData, pricingMode: PricingMode.FIXED, isFixed: true})}
+                                      className={`px-4 py-2 rounded text-sm font-medium transition-colors ${formData.pricingMode === PricingMode.FIXED ? 'bg-white shadow text-emerald-700' : 'text-slate-500 hover:text-slate-700'}`}
+                                   >
+                                       Preço Fixo
+                                   </button>
+                                   <button 
+                                      onClick={() => setFormData({...formData, pricingMode: PricingMode.COMPONENTS, isFixed: false})}
+                                      className={`px-4 py-2 rounded text-sm font-medium transition-colors ${formData.pricingMode === PricingMode.COMPONENTS ? 'bg-white shadow text-blue-700' : 'text-slate-500 hover:text-slate-700'}`}
+                                   >
+                                       A Fixar (Componentes)
+                                   </button>
+                               </div>
+                               <div className="flex items-center gap-2 bg-slate-50 p-2 rounded-lg w-fit">
+                                   <span className="text-xs font-bold text-slate-500 uppercase ml-2">Moeda:</span>
+                                   <select 
+                                      value={formData.currency} 
+                                      onChange={(e) => setFormData({...formData, currency: e.target.value as any})} 
+                                      className="border-none bg-transparent text-sm font-bold text-slate-700 focus:ring-0 cursor-pointer py-1 pl-2 pr-8"
+                                   >
+                                       <option value="BRL">Real (R$)</option>
+                                       <option value="USD">Dólar (US$)</option>
+                                   </select>
+                               </div>
                            </div>
 
                            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                                 {formData.pricingMode === PricingMode.FIXED ? (
                                     <div className="col-span-2">
-                                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Preço Fixo (R$/sc)</label>
+                                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Preço Fixo ({formData.currency === 'USD' ? 'US$' : 'R$'}/sc)</label>
                                         <input type="number" step="0.01" value={formData.basePrice || ''} onChange={(e) => setFormData({...formData, basePrice: Number(e.target.value), isFixed: true})} className="w-full border border-slate-300 rounded p-2 text-lg font-bold text-slate-800" />
                                     </div>
                                 ) : (
@@ -1102,7 +1118,7 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
                                 )}
                                 <div className="col-span-1 bg-slate-50 p-4 rounded border border-slate-200">
                                     <p className="text-xs font-bold text-slate-500 uppercase">Preço Final Calculado</p>
-                                    <p className="text-2xl font-bold text-emerald-700 mt-1">R$ {calculatedPrice.toFixed(2)}</p>
+                                    <p className="text-2xl font-bold text-emerald-700 mt-1">{formData.currency === 'USD' ? 'US$' : 'R$'} {calculatedPrice.toFixed(2)}</p>
                                     <p className="text-xs text-slate-400">por saca</p>
                                 </div>
                            </div>
@@ -1115,7 +1131,7 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
                                     <input type="date" value={formData.paymentDate || ''} onChange={(e) => setFormData({...formData, paymentDate: e.target.value})} className="w-full border border-slate-300 rounded p-2" />
                                 </div>
                                 <div>
-                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Comissão (R$/sc)</label>
+                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Comissão ({formData.currency === 'USD' ? 'US$' : 'R$'}/sc)</label>
                                     <input type="number" step="0.01" value={formData.commissionPerBag || ''} onChange={(e) => setFormData({...formData, commissionPerBag: Number(e.target.value)})} className="w-full border border-slate-300 rounded p-2" />
                                 </div>
                                 <div>
@@ -1298,7 +1314,7 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
                                       {reportColumns.seller && <td className="p-2 border truncate max-w-[150px]">{c.sellerName}</td>}
                                       {reportColumns.buyer && <td className="p-2 border truncate max-w-[150px]">{c.buyerName}</td>}
                                       {reportColumns.volume && <td className="p-2 border text-right">{c.totalBags.toLocaleString()}</td>}
-                                      {reportColumns.price && <td className="p-2 border text-right">{c.finalPrice.toFixed(2)}</td>}
+                                      {reportColumns.price && <td className="p-2 border text-right">{c.currency === 'USD' ? 'US$' : 'R$'} {c.finalPrice.toFixed(2)}</td>}
                                       {reportColumns.status && <td className="p-2 border text-center">{c.status}</td>}
                                       {reportColumns.freight && <td className="p-2 border text-center">{c.freightType}</td>}
                                       {reportColumns.location && <td className="p-2 border truncate max-w-[150px]">{c.pickupLocation}</td>}
