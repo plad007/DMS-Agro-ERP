@@ -13,59 +13,49 @@ export enum ContractStatus {
 
 export type FreightType = 'CIF' | 'FOB';
 
+export type PaymentType = 'DATA_FIXA' | 'SOB_RODAS' | 'POS_RETIRADA';
+
 export interface BankAccount {
     bankName: string;
     agency: string;
     account: string;
-    holder?: string; // Optional redundancy
-    holderDoc?: string; // Optional redundancy
+    holder?: string;
+    holderDoc?: string;
 }
 
 export interface Contract {
   id: string;
-  number: string; // Ex: 1001S26
+  number: string;
   product: 'SOJA' | 'MILHO' | 'TRIGO';
-  crop: string; // Ex: 23/24
-  
-  // Parties
+  crop: string;
   sellerName: string;
-  sellerDoc?: string; // NOVO: CPF/CNPJ Vendedor
+  sellerDoc?: string;
   buyerName: string;
-  buyerDoc?: string; // NOVO: CNPJ Comprador
-  
-  // Logistics & Terms
-  totalBags: number; // Quantidade em sacas (60kg)
-  totalTons: number; // Quantidade em toneladas
+  buyerDoc?: string;
+  totalBags: number;
+  totalTons: number;
   deliveredBags: number;
   freightType: FreightType;
-  pickupLocation: string; // Local de Embarque
+  pickupLocation: string;
   shipmentStartDate: string;
   shipmentEndDate: string;
   observation?: string;
-
-  // Financials
   currency: 'BRL' | 'USD';
-  exchangeRate: number; // Câmbio
-  
+  exchangeRate: number;
   pricingMode: PricingMode;
-  isFixed: boolean; // Botão FIXAR
-  
-  // Pricing Components (Values per bag)
-  basePrice: number; // Used for FIXED mode
+  isFixed: boolean;
+  basePrice: number;
   cbotComponent?: number;
   basisComponent?: number;
   costComponent?: number;
-  finalPrice: number; // Calculated or Manual
-  
+  finalPrice: number;
   commissionPerBag: number;
   paymentDate: string;
-  commissionDueDate: string; // paymentDate + 1
-  
-  closingDate: string; // Nova Data de Fechamento do Negócio
-
-  // Specific Bank Details for this contract (Snapshot)
-  sellerBankDetails?: BankAccount; 
-
+  commissionDueDate: string;
+  closingDate: string;
+  sellerBankDetails?: BankAccount;
+  paymentType?: PaymentType;
+  paymentDays?: number;
   status: ContractStatus;
   createdAt: string;
   signatureData?: {
@@ -81,8 +71,13 @@ export interface Shipment {
   plate: string;
   ticketNumber: string;
   weightKg: number;
-  bagsCount: number; // Calculated
+  bagsCount: number;
   date: string;
+  deliveryDate: string;
+  paymentDueDate?: string;
+  promissoryNoteIssued?: boolean;
+  promissoryNoteIssuedAt?: string;
+  promissoryNoteNumber?: string;
 }
 
 export interface MarketData {
@@ -93,27 +88,35 @@ export interface MarketData {
 
 export interface Farm {
     id: string;
-    name: string; // FAZENDA
-    address: string; // ENDEREÇO FAZENDA
+    name: string;
+    address: string;
 }
 
 export interface Producer {
     id: string;
-    name: string; // PRODUTOR
-    doc: string; // CPF/CNPJ
-    stateInsc: string; // I.E. VENDEDOR
+    name: string;
+    doc: string;
+    stateInsc: string;
     email?: string;
-    region: string; // REGIÃO
-    farms: Farm[]; // Lista de fazendas
-    bankDetails: BankAccount[]; // Lista de contas bancárias (Atualizado para Array)
-    funruralType: 'FOLHA' | 'COMERCIALIZACAO' | 'PJ_ISENTO'; // TIPO DE FUNRURAL ATUALIZADO
+    region: string;
+    farms: Farm[];
+    bankDetails: BankAccount[];
+    funruralType: 'FOLHA' | 'COMERCIALIZACAO' | 'PJ_ISENTO';
+}
+
+export interface BuyerPartner {
+    name: string;
+    cpf: string;
+    rg?: string;
+    address?: string;
 }
 
 export interface Buyer {
     id: string;
-    name: string; // COMPRADOR
-    doc: string; // CNPJ
-    stateInsc: string; // I.E.
-    address: string; // ENDEREÇO
-    type: 'TRADING' | 'MERCADO_INTERNO'; // TIPO
+    name: string;
+    doc: string;
+    stateInsc: string;
+    address: string;
+    type: 'TRADING' | 'MERCADO_INTERNO';
+    partners?: BuyerPartner[];
 }

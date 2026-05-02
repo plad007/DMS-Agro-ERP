@@ -176,6 +176,8 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
     currency: 'BRL',
     product: 'SOJA',
     crop: '23/24',
+    paymentType: undefined,
+    paymentDays: undefined,
     freightType: 'FOB',
     closingDate: new Date().toISOString().split('T')[0]
   });
@@ -482,6 +484,8 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
       finalPrice: Number(calculatePrice()), 
       commissionPerBag: Number(formData.commissionPerBag),
       paymentDate: paymentDate,
+      paymentType: formData.paymentType,
+      paymentDays: formData.paymentDays,
       commissionDueDate: commissionDate.toISOString().split('T')[0],
       closingDate: formData.closingDate!,
       sellerBankDetails: formData.sellerBankDetails, // Saves selected account
@@ -691,7 +695,18 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
                 <div className="bg-gray-300 border-b border-black text-center font-bold text-xs py-0.5 uppercase print:bg-gray-300 print:color-adjust-exact">DADOS BANCÁRIOS</div>
                 <div className="p-1 border-b border-black text-xs">
                     <div className="grid grid-cols-4 gap-2 mb-1">
-                        <div><span className="font-bold">Data Pagtº:</span> {new Date(contract.paymentDate).toLocaleDateString('pt-BR', {timeZone: 'UTC'})}</div>
+                        <div>
+                            <span className="font-bold">Pagamento:</span>{' '}
+                            {contract.paymentType === 'DATA_FIXA' && contract.paymentDate
+                                ? new Date(contract.paymentDate).toLocaleDateString('pt-BR', { timeZone: 'UTC' })
+                                : contract.paymentType === 'SOB_RODAS'
+                                ? 'Sob Rodas (no ato da retirada)'
+                                : contract.paymentType === 'POS_RETIRADA' && contract.paymentDays
+                                ? `${contract.paymentDays} dias após o embarque`
+                                : contract.paymentDate
+                                ? new Date(contract.paymentDate).toLocaleDateString('pt-BR', { timeZone: 'UTC' })
+                                : '-'}
+                        </div>
                         <div><span className="font-bold">Banco:</span> {bank?.bankName || '-'}</div>
                         <div><span className="font-bold">Ag:</span> {bank?.agency || '-'}</div>
                         <div><span className="font-bold">C.C.:</span> {bank?.account || '-'}</div>
@@ -1126,34 +1141,52 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
                            <hr className="border-slate-100 my-6" />
 
                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                                <div>
-                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Data de Pagamento</label>
-                                    <input type="date" value={formData.paymentDate || ''} onChange={(e) => setFormData({...formData, paymentDate: e.target.value})} className="w-full border border-slate-300 rounded p-2" />
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Comissão ({formData.currency === 'USD' ? 'US$' : 'R$'}/sc)</label>
-                                    <input type="number" step="0.01" value={formData.commissionPerBag || ''} onChange={(e) => setFormData({...formData, commissionPerBag: Number(e.target.value)})} className="w-full border border-slate-300 rounded p-2" />
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Conta para Pagamento</label>
-                                    <select 
-                                        className="w-full border border-slate-300 rounded p-2 bg-white"
-                                        value={formData.sellerBankDetails ? JSON.stringify(formData.sellerBankDetails) : ''}
-                                        onChange={(e) => {
-                                            const val = e.target.value;
-                                            setFormData({...formData, sellerBankDetails: val ? JSON.parse(val) : undefined});
-                                        }}
-                                    >
-                                        <option value="">Selecione a conta...</option>
-                                        {availableAccounts.map((acc, i) => (
-                                            <option key={i} value={JSON.stringify(acc)}>
-                                                {acc.bankName} - {acc.account}
-                                            </option>
-                                        ))}
-                                    </select>
-                                    {availableAccounts.length === 0 && <p className="text-xs text-red-400 mt-1">Nenhuma conta cadastrada para este produtor.</p>}
-                                </div>
-                           </div>
+  <div>
+    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Tipo de Pagamento</label>
+    <select value={formData.paymentType || ''} onChange={(e) => setFormData({ ...formData, paymentType: e.target.value as any || undefined, paymentDays: e.target.value !== 'POS_RETIRADA' ? undefined : formData.paymentDays })} className="w-full border border-slate-300 rounded p-2 bg-white">
+      <option value="">Selecione...</option>
+      <option value="DATA_FIXA">Data Fixa</option>
+      <option value="SOB_RODAS">Sob Rodas</option>
+      <option value="POS_RETIRADA">Pós Retirada</option>
+    </select>
+  </div>
+
+  {formData.paymentType === 'POS_RETIRADA' && (
+    <div>
+      <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Prazo após embarque (dias)</label>
+      <input type="number" min={1} value={formData.paymentDays || ''} onChange={(e) => setFormData({ ...formData, paymentDays: Number(e.target.value) || undefined })} className="w-full border border-slate-300 rounded p-2" placeholder="Ex: 3" />
+      <p className="text-xs text-slate-400 mt-1">A data de pagamento será calculada por embarque.</p>
+    </div>
+  )}
+
+  {formData.paymentType === 'DATA_FIXA' && (
+    <div>
+      <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Data de Pagamento</label>
+      <input type="date" value={formData.paymentDate || ''} onChange={(e) => setFormData({ ...formData, paymentDate: e.target.value })} className="w-full border border-slate-300 rounded p-2" />
+    </div>
+  )}
+
+  <div>
+    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Comissão ({formData.currency === 'USD' ? 'US$' : 'R$'}/sc)</label>
+    <input type="number" step="0.01" value={formData.commissionPerBag || ''} onChange={(e) => setFormData({ ...formData, commissionPerBag: Number(e.target.value) })} className="w-full border border-slate-300 rounded p-2" />
+  </div>
+
+  <div>
+    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Conta para Pagamento</label>
+    <select 
+        className="w-full border border-slate-300 rounded p-2 bg-white"
+        value={formData.sellerBankDetails ? JSON.stringify(formData.sellerBankDetails) : ''}
+        onChange={(e) => {
+            const val = e.target.value;
+            setFormData({...formData, sellerBankDetails: val ? JSON.parse(val) : undefined});
+        }}
+    >
+      <option value="">Selecione a conta...</option>
+      {availableAccounts.map((acc, i) => (<option key={i} value={JSON.stringify(acc)}>{acc.bankName} - {acc.account}</option>))}
+    </select>
+    {availableAccounts.length === 0 && <p className="text-xs text-red-400 mt-1">Nenhuma conta cadastrada para este produtor.</p>}
+  </div>
+</div>
                       </div>
                       
                       {/* Section 5: Observations */}

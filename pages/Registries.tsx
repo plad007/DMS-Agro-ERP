@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Plus, Search, Edit2, Trash2, Tractor, Building2, MapPin, X, Save, Eye, Wallet, FileText, Banknote } from 'lucide-react';
-import { Producer, Buyer, Farm, BankAccount } from '../types';
+import { Producer, Buyer, Farm, BankAccount, BuyerPartner } from '../types';
 import { getProducers, getBuyers, saveProducer, saveBuyer, deleteProducer, deleteBuyer } from '../services/mockService';
 
 // Helper to display friendly names
@@ -39,8 +39,11 @@ export const Registries: React.FC = () => {
   });
   
   const [buyerForm, setBuyerForm] = useState<Partial<Buyer>>({
-      type: 'TRADING'
+      type: 'TRADING',
+      partners: []
   });
+
+  const [tempPartner, setTempPartner] = useState<Partial<BuyerPartner>>({ name: '', cpf: '', rg: '', address: '' });
 
   // Temporary Inputs
   const [tempFarm, setTempFarm] = useState<Partial<Farm>>({ name: '', address: '' });
@@ -145,6 +148,7 @@ export const Registries: React.FC = () => {
 
   const handleEditBuyer = (b: Buyer) => {
     setBuyerForm(JSON.parse(JSON.stringify(b)));
+    setTempPartner({ name: '', cpf: '', rg: '', address: '' });
     setIsBuyerModalOpen(true);
   };
 
@@ -173,6 +177,31 @@ export const Registries: React.FC = () => {
         await deleteBuyer(id);
         await refreshData();
     }
+  };
+
+  const addPartner = () => {
+      if (!tempPartner.name || !tempPartner.cpf) {
+          alert("Informe ao menos o Nome e o CPF do sócio.");
+          return;
+      }
+      const newPartner: BuyerPartner = {
+          name: tempPartner.name!,
+          cpf: tempPartner.cpf!,
+          rg: tempPartner.rg || '',
+          address: tempPartner.address || ''
+      };
+      setBuyerForm(prev => ({
+          ...prev,
+          partners: [...(prev.partners || []), newPartner]
+      }));
+      setTempPartner({ name: '', cpf: '', rg: '', address: '' });
+  };
+
+  const removePartner = (index: number) => {
+      setBuyerForm(prev => ({
+          ...prev,
+          partners: prev.partners?.filter((_, i) => i !== index)
+      }));
   };
 
   // --- Filter Logic ---
@@ -611,6 +640,53 @@ export const Registries: React.FC = () => {
                         </div>
                     </div>
                  </div>
+
+                 <hr className="my-2" />
+
+                 {/* Sócios / Representantes */}
+                 <div>
+                    <h4 className="font-bold text-slate-700 mb-3 flex items-center gap-2">
+                        <FileText className="w-4 h-4 text-blue-600" /> Sócios / Representantes (Devedores Solidários)
+                    </h4>
+
+                    {/* Lista de sócios */}
+                    <div className="space-y-2 mb-3">
+                        {buyerForm.partners?.map((p, i) => (
+                            <div key={i} className="flex items-start justify-between bg-slate-50 p-3 rounded-lg border border-slate-200">
+                                <div className="text-sm">
+                                    <p className="font-bold text-slate-800">{p.name}</p>
+                                    <p className="text-slate-500 text-xs">CPF: {p.cpf}{p.rg ? ` • RG: ${p.rg}` : ''}</p>
+                                    {p.address && <p className="text-slate-400 text-xs mt-0.5">{p.address}</p>}
+                                </div>
+                                <button onClick={() => removePartner(i)} className="text-red-400 hover:text-red-600 p-1 ml-2 shrink-0">
+                                    <X className="w-4 h-4" />
+                                </button>
+                            </div>
+                        ))}
+                        {(!buyerForm.partners || buyerForm.partners.length === 0) && (
+                            <p className="text-sm text-slate-400 italic">Nenhum sócio cadastrado.</p>
+                        )}
+                    </div>
+
+                    {/* Formulário para adicionar sócio */}
+                    <div className="bg-slate-100 p-4 rounded-lg space-y-2">
+                        <p className="text-xs font-bold text-slate-500 uppercase mb-1">Adicionar Sócio / Representante</p>
+                        <div className="grid grid-cols-2 gap-2">
+                            <div className="col-span-2">
+                                <input type="text" className="w-full border rounded p-1.5 text-sm" placeholder="Nome completo *" value={tempPartner.name} onChange={e => setTempPartner({...tempPartner, name: e.target.value})} />
+                            </div>
+                            <input type="text" className="w-full border rounded p-1.5 text-sm" placeholder="CPF *" value={tempPartner.cpf} onChange={e => setTempPartner({...tempPartner, cpf: e.target.value})} />
+                            <input type="text" className="w-full border rounded p-1.5 text-sm" placeholder="RG (opcional)" value={tempPartner.rg} onChange={e => setTempPartner({...tempPartner, rg: e.target.value})} />
+                            <div className="col-span-2 flex gap-2">
+                                <input type="text" className="w-full border rounded p-1.5 text-sm" placeholder="Endereço (opcional)" value={tempPartner.address} onChange={e => setTempPartner({...tempPartner, address: e.target.value})} />
+                                <button onClick={addPartner} className="bg-blue-600 text-white px-3 rounded hover:bg-blue-700 flex items-center gap-1 shrink-0">
+                                    <Plus className="w-4 h-4" />
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                 </div>
+
                   <div className="p-4 border-t bg-slate-50 flex justify-end gap-2 rounded-b-xl">
                     <button onClick={() => setIsBuyerModalOpen(false)} className="px-4 py-2 text-slate-600 hover:bg-slate-200 rounded">Cancelar</button>
                     <button onClick={handleSaveBuyer} disabled={loading} className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center gap-2">
