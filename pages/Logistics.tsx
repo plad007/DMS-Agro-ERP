@@ -1,8 +1,8 @@
 import React, { useState, useEffect, createRef } from 'react';
-import { Truck, Scale, Plus, AlertTriangle, CalendarClock, CheckCircle2, FileText, Printer, X } from 'lucide-react';
+import { Truck, Scale, Plus, AlertTriangle, CalendarClock, CheckCircle2, FileText, Printer, X, Search, BarChart2, DollarSign, Edit2, Trash2 } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { Contract, Shipment } from '../types';
-import { addShipment, markPromissoryNoteIssued, generatePromissoryNumber, getBuyers } from '../services/mockService';
+import { addShipment, markPromissoryNoteIssued, generatePromissoryNumber, getBuyers, markShipmentPaid, updateShipment, deleteShipment } from '../services/mockService';
 
 interface LogisticsProps {
   contracts: Contract[];
@@ -299,15 +299,193 @@ const PromissoryNotePrint: React.FC<PromissoryPrintProps> = ({ shipments, contra
   );
 };
 
+// --- Componente de impressão do Relatório de Embarques ---
+interface ShipmentReportPrintProps {
+  shipments: Shipment[];
+  contract: Contract;
+  filters: { dateFrom: string; dateTo: string; paymentStatus: 'all' | 'paid' | 'unpaid' };
+  onClose: () => void;
+}
+
+const ShipmentReportPrint: React.FC<ShipmentReportPrintProps> = ({ shipments, contract, filters, onClose }) => {
+  const [contentRef, setContentRef] = useState<HTMLIFrameElement | null>(null);
+  const [mountNode, setMountNode] = useState<HTMLElement | null>(null);
+
+  const currency = contract.currency === 'USD' ? 'US$' : 'R$';
+  const totalBags = shipments.reduce((sum, s) => sum + s.bagsCount, 0);
+  const totalWeight = shipments.reduce((sum, s) => sum + s.weightKg, 0);
+  const totalValue = totalBags * (contract.finalPrice || 0);
+  const totalPaid = shipments.filter(s => s.paid).reduce((sum, s) => sum + s.bagsCount * (contract.finalPrice || 0), 0);
+  const totalPending = totalValue - totalPaid;
+
+  const periodoLabel = filters.dateFrom && filters.dateTo
+    ? `${new Date(filters.dateFrom + 'T00:00:00').toLocaleDateString('pt-BR')} a ${new Date(filters.dateTo + 'T00:00:00').toLocaleDateString('pt-BR')}`
+    : filters.dateFrom
+    ? `A partir de ${new Date(filters.dateFrom + 'T00:00:00').toLocaleDateString('pt-BR')}`
+    : filters.dateTo
+    ? `Até ${new Date(filters.dateTo + 'T00:00:00').toLocaleDateString('pt-BR')}`
+    : 'Todos os períodos';
+
+  const statusLabel = filters.paymentStatus === 'paid' ? 'Apenas pagos' : filters.paymentStatus === 'unpaid' ? 'Apenas não pagos' : 'Todos';
+
+  const reportContent = (
+    <div style={{ fontFamily: 'Arial, sans-serif', fontSize: '11px', padding: '12mm', background: 'white', color: 'black', maxWidth: '297mm', margin: '0 auto' }}>
+
+      {/* Cabeçalho */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px', borderBottom: '2px solid #1a1a1a', paddingBottom: '10px' }}>
+        <div>
+          <img src={LOGO_URL} alt="DMS Agro" style={{ height: '48px', objectFit: 'contain' }} />
+        </div>
+        <div style={{ textAlign: 'right' }}>
+          <h1 style={{ fontSize: '16px', fontWeight: 'bold', margin: '0 0 4px 0', textTransform: 'uppercase' }}>Relatório de Embarques</h1>
+          <p style={{ margin: '0', fontSize: '11px', color: '#444' }}>Contrato {contract.number} — {contract.product} — Safra {contract.crop}</p>
+          <p style={{ margin: '2px 0 0 0', fontSize: '10px', color: '#666' }}>Emitido em {new Date().toLocaleDateString('pt-BR')} às {new Date().toLocaleTimeString('pt-BR')}</p>
+        </div>
+      </div>
+
+      {/* Dados do contrato */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '12px', padding: '8px', background: '#f5f5f5', borderRadius: '4px', fontSize: '10px' }}>
+        <div><strong>Vendedor:</strong> {contract.sellerName}</div>
+        <div><strong>Comprador:</strong> {contract.buyerName}</div>
+        <div><strong>Tipo de Pagamento:</strong> {PAYMENT_TYPE_LABEL[contract.paymentType || ''] || '-'}{contract.paymentDays ? ` (${contract.paymentDays}d)` : ''}</div>
+        <div><strong>Preço:</strong> {currency} {(contract.finalPrice || 0).toFixed(2)}/sc</div>
+        <div><strong>Período filtrado:</strong> {periodoLabel}</div>
+        <div><strong>Status:</strong> {statusLabel}</div>
+      </div>
+
+      {/* Tabela de embarques */}
+      <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '16px', fontSize: '10px' }}>
+        <thead>
+          <tr style={{ background: '#2d2d2d', color: 'white' }}>
+            <th style={{ padding: '5px 6px', textAlign: 'left', border: '1px solid #555' }}>Data Embarque</th>
+            <th style={{ padding: '5px 6px', textAlign: 'left', border: '1px solid #555' }}>Placa</th>
+            <th style={{ padding: '5px 6px', textAlign: 'left', border: '1px solid #555' }}>Ticket</th>
+            <th style={{ padding: '5px 6px', textAlign: 'right', border: '1px solid #555' }}>Sacas</th>
+            <th style={{ padding: '5px 6px', textAlign: 'right', border: '1px solid #555' }}>Peso (kg)</th>
+            <th style={{ padding: '5px 6px', textAlign: 'right', border: '1px solid #555' }}>Valor ({currency})</th>
+            <th style={{ padding: '5px 6px', textAlign: 'center', border: '1px solid #555' }}>Pgto Previsto</th>
+            <th style={{ padding: '5px 6px', textAlign: 'center', border: '1px solid #555' }}>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {shipments.map((s, i) => {
+            const valor = s.bagsCount * (contract.finalPrice || 0);
+            return (
+              <tr key={s.id} style={{ background: s.paid ? '#f0fdf4' : i % 2 === 0 ? 'white' : '#fafafa' }}>
+                <td style={{ padding: '4px 6px', border: '1px solid #ddd' }}>{new Date(s.deliveryDate + 'T00:00:00').toLocaleDateString('pt-BR')}</td>
+                <td style={{ padding: '4px 6px', border: '1px solid #ddd', fontFamily: 'monospace', fontWeight: 'bold' }}>{s.plate}</td>
+                <td style={{ padding: '4px 6px', border: '1px solid #ddd' }}>{s.ticketNumber}</td>
+                <td style={{ padding: '4px 6px', border: '1px solid #ddd', textAlign: 'right' }}>{s.bagsCount.toLocaleString('pt-BR')}</td>
+                <td style={{ padding: '4px 6px', border: '1px solid #ddd', textAlign: 'right' }}>{s.weightKg.toLocaleString('pt-BR')}</td>
+                <td style={{ padding: '4px 6px', border: '1px solid #ddd', textAlign: 'right' }}>{valor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+                <td style={{ padding: '4px 6px', border: '1px solid #ddd', textAlign: 'center' }}>{s.paymentDueDate ? new Date(s.paymentDueDate + 'T00:00:00').toLocaleDateString('pt-BR') : '-'}</td>
+                <td style={{ padding: '4px 6px', border: '1px solid #ddd', textAlign: 'center', color: s.paid ? '#16a34a' : '#dc2626', fontWeight: 'bold' }}>
+                  {s.paid ? '✓ PAGO' : 'PENDENTE'}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+        <tfoot>
+          <tr style={{ background: '#e8e8e8', fontWeight: 'bold' }}>
+            <td colSpan={3} style={{ padding: '5px 6px', border: '1px solid #aaa', textAlign: 'right' }}>TOTAIS:</td>
+            <td style={{ padding: '5px 6px', border: '1px solid #aaa', textAlign: 'right' }}>{totalBags.toLocaleString('pt-BR')}</td>
+            <td style={{ padding: '5px 6px', border: '1px solid #aaa', textAlign: 'right' }}>{totalWeight.toLocaleString('pt-BR')}</td>
+            <td style={{ padding: '5px 6px', border: '1px solid #aaa', textAlign: 'right' }}>{totalValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+            <td colSpan={2} style={{ padding: '5px 6px', border: '1px solid #aaa' }}></td>
+          </tr>
+        </tfoot>
+      </table>
+
+      {/* Resumo financeiro */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px', marginTop: '8px' }}>
+        <div style={{ padding: '10px', background: '#f0fdf4', border: '1px solid #86efac', borderRadius: '6px', textAlign: 'center' }}>
+          <p style={{ margin: '0 0 4px 0', fontSize: '10px', color: '#166534', textTransform: 'uppercase', fontWeight: 'bold' }}>Total Pago</p>
+          <p style={{ margin: '0', fontSize: '14px', fontWeight: 'bold', color: '#16a34a' }}>{currency} {totalPaid.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+        </div>
+        <div style={{ padding: '10px', background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: '6px', textAlign: 'center' }}>
+          <p style={{ margin: '0 0 4px 0', fontSize: '10px', color: '#991b1b', textTransform: 'uppercase', fontWeight: 'bold' }}>Saldo Pendente</p>
+          <p style={{ margin: '0', fontSize: '14px', fontWeight: 'bold', color: '#dc2626' }}>{currency} {totalPending.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+        </div>
+        <div style={{ padding: '10px', background: '#f8fafc', border: '1px solid #cbd5e1', borderRadius: '6px', textAlign: 'center' }}>
+          <p style={{ margin: '0 0 4px 0', fontSize: '10px', color: '#475569', textTransform: 'uppercase', fontWeight: 'bold' }}>Total Geral</p>
+          <p style={{ margin: '0', fontSize: '14px', fontWeight: 'bold', color: '#1e293b' }}>{currency} {totalValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+        </div>
+      </div>
+
+      {/* Rodapé */}
+      <div style={{ borderTop: '1px solid #ccc', marginTop: '20px', paddingTop: '8px', fontSize: '9px', color: '#888', textAlign: 'center' }}>
+        <p style={{ margin: 0 }}>DMS AGRO COMÉRCIO DE CEREAIS — CNPJ: 33.082.718/0001-23 — 311 Sul. Orla 14 Graciosa. Lt 17. Al 12. Sala 1. CEP 77026-070. Palmas/TO</p>
+      </div>
+    </div>
+  );
+
+  useEffect(() => {
+    if (!contentRef) return;
+    const doc = contentRef.contentWindow?.document;
+    if (!doc) return;
+    doc.open();
+    doc.write(`<!DOCTYPE html><html><head>
+    <style>body{margin:0;padding:0;background:white;}@media print{@page{size:A4 landscape;margin:0;}body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}}</style>
+    </head><body><div id="report-mount"></div></body></html>`);
+    doc.close();
+    const mount = doc.getElementById('report-mount');
+    setMountNode(mount);
+    const timer = setTimeout(() => {
+      const fileName = `LOGISTICA_${contract.number}_${contract.sellerName}_${periodoLabel.replace(/\//g, '-')}`.toUpperCase();
+      const originalTitle = document.title;
+      document.title = fileName;
+      if (contentRef.contentWindow?.document) {
+        contentRef.contentWindow.document.title = fileName;
+      }
+      contentRef.contentWindow?.focus();
+      contentRef.contentWindow?.print();
+      if (contentRef.contentWindow) {
+        contentRef.contentWindow.addEventListener('afterprint', () => { document.title = originalTitle; }, { once: true });
+      }
+      setTimeout(() => { if (document.title === fileName) document.title = originalTitle; }, 30000);
+    }, 1500);
+    return () => clearTimeout(timer);
+  }, [contentRef]);
+
+  return (
+    <div className="fixed inset-0 z-[9999] bg-slate-900/90 backdrop-blur-sm flex flex-col items-center justify-center p-4">
+      <div className="w-full max-w-[297mm] flex justify-between items-center mb-4 text-white">
+        <div className="flex items-center gap-2">
+          <BarChart2 className="w-5 h-5" />
+          <span className="font-bold">Relatório de Embarques — Contrato {contract.number}</span>
+        </div>
+        <button onClick={onClose} className="flex items-center gap-2 bg-white/10 hover:bg-white/20 px-4 py-2 rounded-lg transition-colors text-sm font-medium">
+          <X className="w-4 h-4" /> Fechar
+        </button>
+      </div>
+      <iframe ref={setContentRef} className="bg-white w-full max-w-[297mm] h-[80vh] shadow-2xl rounded-sm" title="Report Frame" />
+      {mountNode && createPortal(reportContent, mountNode)}
+      <p className="text-white/50 text-xs mt-4">A janela de impressão abrirá automaticamente. Selecione "Salvar como PDF".</p>
+    </div>
+  );
+};
+
 // --- Componente principal ---
 export const Logistics: React.FC<LogisticsProps> = ({ contracts, shipments, onUpdate }) => {
   const [selectedContractId, setSelectedContractId] = useState<string>(contracts[0]?.id || '');
+
   const [showAddTicket, setShowAddTicket] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedShipmentIds, setSelectedShipmentIds] = useState<Set<string>>(new Set());
   const [printNPData, setPrintNPData] = useState<{ shipments: Shipment[]; contract: Contract & { buyerPartners?: any[] }; noteNumber: string; onCloseFn: () => Promise<void> } | null>(null);
   const today = new Date().toISOString().split('T')[0];
   const [ticketData, setTicketData] = useState({ plate: '', ticketNumber: '', weightKg: 0, deliveryDate: today });
+  const [contractSearch, setContractSearch] = useState('');
+  const [showReportModal, setShowReportModal] = useState(false);
+  const [reportFilters, setReportFilters] = useState<{ dateFrom: string; dateTo: string; paymentStatus: 'all' | 'paid' | 'unpaid' }>({ dateFrom: '', dateTo: '', paymentStatus: 'all' });
+  const [printReportData, setPrintReportData] = useState<{ shipments: Shipment[]; contract: Contract; filters: typeof reportFilters } | null>(null);
+  const [isMarkingPaid, setIsMarkingPaid] = useState<string | null>(null);
+  const [editingShipment, setEditingShipment] = useState<Shipment | null>(null);
+  const [editForm, setEditForm] = useState({ plate: '', ticketNumber: '', weightKg: 0, deliveryDate: '' });
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+  const [deletingShipmentId, setDeletingShipmentId] = useState<string | null>(null);
+  const [confirmDeleteShipment, setConfirmDeleteShipment] = useState<Shipment | null>(null);
 
   const selectedContract = contracts.find(c => c.id === selectedContractId);
   const contractShipments = shipments.filter(s => s.contractId === selectedContractId);
@@ -361,6 +539,7 @@ export const Logistics: React.FC<LogisticsProps> = ({ contracts, shipments, onUp
       noteNumber,
       onCloseFn: async () => {
         await onUpdate();
+        setSelectedContractId(selectedContractId);
         setSelectedShipmentIds(new Set());
       }
     });
@@ -378,6 +557,82 @@ export const Logistics: React.FC<LogisticsProps> = ({ contracts, shipments, onUp
       noteNumber: shipment.promissoryNoteNumber,
       onCloseFn: async () => { /* reimpressão não precisa atualizar dados */ }
     });
+  };
+
+  const handleMarkPaid = async (shipment: Shipment) => {
+    setIsMarkingPaid(shipment.id);
+    await markShipmentPaid(shipment.id, !shipment.paid);
+    await onUpdate();
+    setSelectedContractId(selectedContractId);
+    setIsMarkingPaid(null);
+  };
+
+  const handleOpenReport = () => {
+    setReportFilters({ dateFrom: '', dateTo: '', paymentStatus: 'all' });
+    setShowReportModal(true);
+  };
+
+  const handleGenerateReport = () => {
+    let filtered = contractShipments;
+    if (reportFilters.dateFrom) {
+      filtered = filtered.filter(s => s.deliveryDate >= reportFilters.dateFrom);
+    }
+    if (reportFilters.dateTo) {
+      filtered = filtered.filter(s => s.deliveryDate <= reportFilters.dateTo);
+    }
+    if (reportFilters.paymentStatus === 'paid') {
+      filtered = filtered.filter(s => s.paid);
+    } else if (reportFilters.paymentStatus === 'unpaid') {
+      filtered = filtered.filter(s => !s.paid);
+    }
+    setPrintReportData({ shipments: filtered, contract: selectedContract!, filters: reportFilters });
+    setShowReportModal(false);
+  };
+
+  const handleEditShipment = (s: Shipment) => {
+    setEditingShipment(s);
+    setEditForm({
+      plate: s.plate,
+      ticketNumber: s.ticketNumber,
+      weightKg: s.weightKg,
+      deliveryDate: s.deliveryDate,
+    });
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingShipment || !selectedContract) return;
+    setIsSavingEdit(true);
+    const updated: Shipment = {
+      ...editingShipment,
+      plate: editForm.plate,
+      ticketNumber: editForm.ticketNumber,
+      weightKg: editForm.weightKg,
+      deliveryDate: editForm.deliveryDate,
+      bagsCount: Math.floor(editForm.weightKg / 60),
+    };
+    await updateShipment(updated, editingShipment.bagsCount);
+    await onUpdate();
+    setSelectedContractId(selectedContractId);
+    setIsSavingEdit(false);
+    setEditingShipment(null);
+  };
+
+  const handleDeleteShipment = (s: Shipment) => {
+    if (s.promissoryNoteIssued) {
+      setConfirmDeleteShipment({ ...s, _blockedByNP: true } as any);
+      return;
+    }
+    setConfirmDeleteShipment(s);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!confirmDeleteShipment) return;
+    setDeletingShipmentId(confirmDeleteShipment.id);
+    setConfirmDeleteShipment(null);
+    await deleteShipment(confirmDeleteShipment.id, confirmDeleteShipment.bagsCount, confirmDeleteShipment.contractId);
+    await onUpdate();
+    setSelectedContractId(selectedContractId);
+    setDeletingShipmentId(null);
   };
 
   const getCriticalAlert = (contract: Contract, contractShips: Shipment[]) => {
@@ -402,10 +657,12 @@ export const Logistics: React.FC<LogisticsProps> = ({ contracts, shipments, onUp
   const handleAddTicket = async () => {
     if (!selectedContract) return;
     setIsSubmitting(true);
+    // Guarda o ID antes do update para garantir que não muda
+    const contractIdToKeep = selectedContract.id;
     const bags = Math.floor(ticketData.weightKg / 60);
     const newShipment: Shipment = {
       id: Math.random().toString(36),
-      contractId: selectedContract.id,
+      contractId: contractIdToKeep,
       plate: ticketData.plate,
       ticketNumber: ticketData.ticketNumber,
       weightKg: ticketData.weightKg,
@@ -415,6 +672,8 @@ export const Logistics: React.FC<LogisticsProps> = ({ contracts, shipments, onUp
     };
     await addShipment(newShipment, selectedContract);
     await onUpdate();
+    // Restaura explicitamente o contrato selecionado após o update
+    setSelectedContractId(contractIdToKeep);
     setIsSubmitting(false);
     setShowAddTicket(false);
     setTicketData({ plate: '', ticketNumber: '', weightKg: 0, deliveryDate: today });
@@ -425,6 +684,38 @@ export const Logistics: React.FC<LogisticsProps> = ({ contracts, shipments, onUp
   const selectedAlert = getCriticalAlert(selectedContract, contractShipments);
   const pendingBags = selectedContract.totalBags - selectedContract.deliveredBags;
   const progressPct = Math.min((selectedContract.deliveredBags / selectedContract.totalBags) * 100, 100);
+
+  const filteredContracts = contracts
+    .filter(c => {
+      if (!contractSearch.trim()) return true;
+      const term = contractSearch.toLowerCase();
+      return (
+        c.number.toLowerCase().includes(term) ||
+        c.sellerName.toLowerCase().includes(term) ||
+        c.buyerName.toLowerCase().includes(term)
+      );
+    })
+    .sort((a, b) => {
+      // Prioridade 1: em carregamento (deliveredBags > 0 e < totalBags)
+      const aInProgress = a.deliveredBags > 0 && a.deliveredBags < a.totalBags;
+      const bInProgress = b.deliveredBags > 0 && b.deliveredBags < b.totalBags;
+      if (aInProgress && !bInProgress) return -1;
+      if (!aInProgress && bInProgress) return 1;
+
+      // Prioridade 2: com alerta de prazo
+      const aAlert = contractAlert(a);
+      const bAlert = contractAlert(b);
+      if (aAlert && !bAlert) return -1;
+      if (!aAlert && bAlert) return 1;
+
+      // Prioridade 3: com embarques mas concluídos
+      const aHasShipments = a.deliveredBags > 0;
+      const bHasShipments = b.deliveredBags > 0;
+      if (aHasShipments && !bHasShipments) return -1;
+      if (!aHasShipments && bHasShipments) return 1;
+
+      return 0;
+    });
 
   return (
     <>
@@ -440,12 +731,191 @@ export const Logistics: React.FC<LogisticsProps> = ({ contracts, shipments, onUp
         />
       )}
 
+      {printReportData && (
+        <ShipmentReportPrint
+          shipments={printReportData.shipments}
+          contract={printReportData.contract}
+          filters={printReportData.filters}
+          onClose={() => setPrintReportData(null)}
+        />
+      )}
+
+      {showReportModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="font-bold text-slate-800 flex items-center gap-2">
+                <BarChart2 className="w-5 h-5 text-slate-600" /> Configurar Relatório
+              </h3>
+              <button onClick={() => setShowReportModal(false)} className="text-slate-400 hover:text-slate-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Período — Data Início</label>
+                <input type="date" className="w-full border border-slate-300 rounded-lg p-2 text-sm"
+                  value={reportFilters.dateFrom}
+                  onChange={e => setReportFilters({ ...reportFilters, dateFrom: e.target.value })} />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Período — Data Fim</label>
+                <input type="date" className="w-full border border-slate-300 rounded-lg p-2 text-sm"
+                  value={reportFilters.dateTo}
+                  onChange={e => setReportFilters({ ...reportFilters, dateTo: e.target.value })} />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Status de Pagamento</label>
+                <div className="flex gap-3 mt-2">
+                  {(['all', 'unpaid', 'paid'] as const).map(opt => (
+                    <label key={opt} className="flex items-center gap-2 cursor-pointer text-sm">
+                      <input type="radio" checked={reportFilters.paymentStatus === opt}
+                        onChange={() => setReportFilters({ ...reportFilters, paymentStatus: opt })}
+                        className="text-emerald-600" />
+                      {opt === 'all' ? 'Todos' : opt === 'unpaid' ? 'Não pagos' : 'Pagos'}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 mt-6">
+              <button onClick={() => setShowReportModal(false)} className="px-4 py-2 text-slate-500">Cancelar</button>
+              <button onClick={handleGenerateReport}
+                className="px-6 py-2 bg-slate-800 text-white rounded-lg hover:bg-slate-900 flex items-center gap-2 font-medium">
+                <Printer className="w-4 h-4" /> Gerar Relatório
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {confirmDeleteShipment && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm p-6">
+            <div className="flex items-start gap-4 mb-6">
+              <div className="p-2 bg-red-100 rounded-lg shrink-0">
+                <Trash2 className="w-5 h-5 text-red-600" />
+              </div>
+              <div>
+                {(confirmDeleteShipment as any)._blockedByNP ? (
+                  <>
+                    <h3 className="font-bold text-slate-800 mb-1">Exclusão bloqueada</h3>
+                    <p className="text-sm text-slate-600">
+                      O embarque da placa <strong>{confirmDeleteShipment.plate}</strong> possui uma Nota Promissória emitida e não pode ser excluído.
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <h3 className="font-bold text-slate-800 mb-1">Confirmar exclusão</h3>
+                    <p className="text-sm text-slate-600">
+                      Deseja excluir o embarque da placa <strong>{confirmDeleteShipment.plate}</strong> ({confirmDeleteShipment.bagsCount.toLocaleString()} sacas)?
+                    </p>
+                    <p className="text-xs text-red-500 mt-2 font-medium">Esta ação não pode ser desfeita.</p>
+                  </>
+                )}
+              </div>
+            </div>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setConfirmDeleteShipment(null)}
+                className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg text-sm font-medium"
+              >
+                {(confirmDeleteShipment as any)._blockedByNP ? 'Fechar' : 'Cancelar'}
+              </button>
+              {!(confirmDeleteShipment as any)._blockedByNP && (
+                <button
+                  onClick={handleConfirmDelete}
+                  className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 text-sm font-medium flex items-center gap-2"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  Excluir
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {editingShipment && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="font-bold text-slate-800 flex items-center gap-2">
+                <Edit2 className="w-5 h-5 text-slate-600" /> Editar Embarque
+              </h3>
+              <button onClick={() => setEditingShipment(null)} className="text-slate-400 hover:text-slate-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {editingShipment.promissoryNoteIssued && (
+              <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-700 text-sm flex items-start gap-2">
+                <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+                <span>Este embarque já possui NP emitida. Editar os dados pode gerar inconsistência com o documento emitido.</span>
+              </div>
+            )}
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Placa</label>
+                <input type="text" className="w-full border border-slate-300 rounded-lg p-2 uppercase"
+                  value={editForm.plate}
+                  onChange={e => setEditForm({ ...editForm, plate: e.target.value.toUpperCase() })} />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Ticket Balança</label>
+                <input type="text" className="w-full border border-slate-300 rounded-lg p-2"
+                  value={editForm.ticketNumber}
+                  onChange={e => setEditForm({ ...editForm, ticketNumber: e.target.value })} />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Peso Líquido (Kg)</label>
+                <input type="number" className="w-full border border-slate-300 rounded-lg p-2"
+                  value={editForm.weightKg || ''}
+                  onChange={e => setEditForm({ ...editForm, weightKg: Number(e.target.value) })} />
+                {editForm.weightKg > 0 && (
+                  <p className="text-xs text-slate-400 mt-1">= {Math.floor(editForm.weightKg / 60).toLocaleString()} sacas</p>
+                )}
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Data do Embarque</label>
+                <input type="date" className="w-full border border-slate-300 rounded-lg p-2"
+                  value={editForm.deliveryDate}
+                  onChange={e => setEditForm({ ...editForm, deliveryDate: e.target.value })} />
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 mt-6">
+              <button onClick={() => setEditingShipment(null)} className="px-4 py-2 text-slate-500">Cancelar</button>
+              <button onClick={handleSaveEdit} disabled={isSavingEdit || !editForm.plate || !editForm.deliveryDate || editForm.weightKg <= 0}
+                className="px-6 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50 flex items-center gap-2 font-medium">
+                {isSavingEdit && <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
+                Salvar Alterações
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Sidebar */}
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 h-fit">
-          <h3 className="font-bold text-slate-700 mb-4 flex items-center gap-2"><Truck className="w-5 h-5" /> Contratos</h3>
-          <div className="space-y-2 max-h-[600px] overflow-y-auto">
-            {contracts.map(contract => {
+          <h3 className="font-bold text-slate-700 mb-3 flex items-center gap-2"><Truck className="w-5 h-5" /> Contratos</h3>
+          <div className="relative mb-3">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+            <input
+              type="text"
+              placeholder="Buscar por nº, vendedor ou comprador..."
+              className="w-full pl-8 pr-3 py-1.5 text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-emerald-500"
+              value={contractSearch}
+              onChange={(e) => setContractSearch(e.target.value)}
+            />
+          </div>
+          <div className="space-y-2 max-h-[560px] overflow-y-auto">
+            {filteredContracts.length === 0 ? (
+              <p className="text-xs text-slate-400 text-center py-4">Nenhum contrato encontrado.</p>
+            ) : null}
+            {filteredContracts.map(contract => {
               const alert = contractAlert(contract);
               const pct = Math.min((contract.deliveredBags / contract.totalBags) * 100, 100);
               const isSelected = selectedContractId === contract.id;
@@ -489,8 +959,16 @@ export const Logistics: React.FC<LogisticsProps> = ({ contracts, shipments, onUp
           {/* Card resumo */}
           <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
             <div className="flex justify-between items-start mb-6">
-              <div>
+              <div className="flex items-center gap-3">
                 <h2 className="text-xl font-bold text-slate-800">Contrato {selectedContract.number}</h2>
+                {contractShipments.length > 0 && (
+                  <button onClick={handleOpenReport} title="Gerar relatório de embarques"
+                    className="text-slate-400 hover:text-slate-700 transition-colors">
+                    <BarChart2 className="w-5 h-5" />
+                  </button>
+                )}
+              </div>
+              <div>
                 <p className="text-slate-500 text-sm mt-0.5">
                   {selectedContract.sellerName}<span className="mx-2">•</span>{selectedContract.product}
                   {selectedContract.paymentType && (
@@ -627,7 +1105,9 @@ export const Logistics: React.FC<LogisticsProps> = ({ contracts, shipments, onUp
                       <th className="px-4 py-3 font-medium">Ticket</th>
                       <th className="px-4 py-3 font-medium text-right">Sacas</th>
                       <th className="px-4 py-3 font-medium text-right">Pgto Previsto</th>
+                      <th className="px-4 py-3 font-medium text-center">Pago</th>
                       {isPosRetirada && <th className="px-4 py-3 font-medium text-center">NP</th>}
+                      <th className="px-4 py-3 font-medium text-center">Ações</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-50">
@@ -639,7 +1119,7 @@ export const Logistics: React.FC<LogisticsProps> = ({ contracts, shipments, onUp
                       const canSelect = isPosRetirada && !s.promissoryNoteIssued;
 
                       return (
-                        <tr key={s.id} className={`${isUrgent ? 'bg-red-50' : ''} ${isChecked ? 'bg-blue-50' : ''}`}>
+                        <tr key={s.id} className={`${s.paid ? 'bg-emerald-50' : ''} ${isUrgent && !s.paid ? 'bg-red-50' : ''} ${isChecked ? 'bg-blue-50' : ''}`}>
                           {isPosRetirada && (
                             <td className="px-4 py-3">
                               {canSelect ? (
@@ -662,6 +1142,25 @@ export const Logistics: React.FC<LogisticsProps> = ({ contracts, shipments, onUp
                               </span>
                             ) : <span className="text-slate-300">-</span>}
                           </td>
+                          <td className="px-4 py-3 text-center">
+                            <button
+                              onClick={() => handleMarkPaid(s)}
+                              disabled={isMarkingPaid === s.id}
+                              title={s.paid ? 'Marcar como não pago' : 'Marcar como pago'}
+                              className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium transition-colors ${
+                                s.paid
+                                  ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'
+                                  : 'bg-slate-100 text-slate-500 hover:bg-emerald-50 hover:text-emerald-600'
+                              } disabled:opacity-50`}
+                            >
+                              {isMarkingPaid === s.id ? (
+                                <div className="w-3 h-3 border-2 border-current/30 border-t-current rounded-full animate-spin" />
+                              ) : (
+                                <DollarSign className="w-3 h-3" />
+                              )}
+                              {s.paid ? 'Pago' : 'Pendente'}
+                            </button>
+                          </td>
                           {isPosRetirada && (
                             <td className="px-4 py-3 text-center">
                               {s.promissoryNoteIssued ? (
@@ -683,6 +1182,28 @@ export const Logistics: React.FC<LogisticsProps> = ({ contracts, shipments, onUp
                               )}
                             </td>
                           )}
+                          <td className="px-4 py-3 text-center">
+                            <div className="flex items-center justify-center gap-2">
+                              <button
+                                onClick={() => handleEditShipment(s)}
+                                className="text-slate-400 hover:text-blue-600 transition-colors"
+                                title="Editar embarque"
+                              >
+                                <Edit2 className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteShipment(s)}
+                                disabled={deletingShipmentId === s.id}
+                                className="text-slate-400 hover:text-red-600 transition-colors disabled:opacity-50"
+                                title={s.promissoryNoteIssued ? 'Embarque com NP emitida não pode ser excluído' : 'Excluir embarque'}
+                              >
+                                {deletingShipmentId === s.id
+                                  ? <div className="w-3.5 h-3.5 border-2 border-red-300 border-t-red-600 rounded-full animate-spin" />
+                                  : <Trash2 className="w-3.5 h-3.5" />
+                                }
+                              </button>
+                            </div>
+                          </td>
                         </tr>
                       );
                     })}

@@ -78,6 +78,8 @@ export interface Shipment {
   promissoryNoteIssued?: boolean;
   promissoryNoteIssuedAt?: string;
   promissoryNoteNumber?: string;
+  paid?: boolean;
+  paidAt?: string;
 }
 
 export interface MarketData {

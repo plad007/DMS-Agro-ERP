@@ -65,7 +65,9 @@ const mapShipmentFromDB = (s: any): Shipment => ({
     paymentDueDate: s.payment_due_date ?? undefined,
     promissoryNoteIssued: s.promissory_note_issued ?? false,
     promissoryNoteIssuedAt: s.promissory_note_issued_at ?? undefined,
-    promissoryNoteNumber: s.promissory_note_number ?? undefined
+    promissoryNoteNumber: s.promissory_note_number ?? undefined,
+    paid: s.paid ?? false,
+    paidAt: s.paid_at ?? undefined
 });
 
 const calcPaymentDueDate = (
@@ -252,6 +254,17 @@ export const markPromissoryNoteIssued = async (shipmentIds: string[], noteNumber
     if (error) throw error;
 };
 
+export const markShipmentPaid = async (shipmentId: string, paid: boolean): Promise<void> => {
+    const { error } = await supabase
+        .from('shipments')
+        .update({
+            paid,
+            paid_at: paid ? new Date().toISOString() : null
+        })
+        .eq('id', shipmentId);
+    if (error) throw error;
+};
+
 export const generatePromissoryNumber = async (): Promise<string> => {
     const now = new Date();
     const year = now.getFullYear();
@@ -278,6 +291,51 @@ export const generatePromissoryNumber = async (): Promise<string> => {
     }
 
     return `${String(data).padStart(3, '0')}/${yearShort}`;
+};
+
+export const updateShipment = async (shipment: Shipment, originalBags: number): Promise<void> => {
+    const newBags = Math.floor(shipment.weightKg / 60);
+    const bagsDiff = newBags - originalBags;
+
+    const dbShipment = {
+        plate: shipment.plate,
+        ticket_number: shipment.ticketNumber,
+        weight_kg: shipment.weightKg,
+        bags_count: newBags,
+        delivery_date: shipment.deliveryDate,
+    };
+
+    const { error } = await supabase.from('shipments').update(dbShipment).eq('id', shipment.id);
+    if (error) throw error;
+
+    // Atualiza delivered_bags no contrato se houve diferença
+    if (bagsDiff !== 0) {
+        const { data: contract } = await supabase
+            .from('contracts')
+            .select('delivered_bags')
+            .eq('id', shipment.contractId)
+            .single();
+        if (contract) {
+            const newTotal = Math.max(0, (Number(contract.delivered_bags) || 0) + bagsDiff);
+            await supabase.from('contracts').update({ delivered_bags: newTotal }).eq('id', shipment.contractId);
+        }
+    }
+};
+
+export const deleteShipment = async (shipmentId: string, bagsCount: number, contractId: string): Promise<void> => {
+    const { error } = await supabase.from('shipments').delete().eq('id', shipmentId);
+    if (error) throw error;
+
+    // Subtrai as sacas do contrato
+    const { data: contract } = await supabase
+        .from('contracts')
+        .select('delivered_bags')
+        .eq('id', contractId)
+        .single();
+    if (contract) {
+        const newTotal = Math.max(0, (Number(contract.delivered_bags) || 0) - bagsCount);
+        await supabase.from('contracts').update({ delivered_bags: newTotal }).eq('id', contractId);
+    }
 };
 
 export const bulkInsert = async (table: string, data: any[]) => {
