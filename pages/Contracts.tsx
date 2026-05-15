@@ -682,7 +682,13 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
                             <p className="uppercase mb-1">
                                 {contract.totalBags.toLocaleString('pt-BR')} SACAS ({contract.totalTons.toLocaleString('pt-BR')} TONELADAS) DE {contract.product} EM GRÃOS.
                             </p>
-                            <p>Qualidade: padrão exportação ANEC, umidade até 14%, impureza até 1%, Avariados e ou ardidos até 8%.</p>
+                            <p>
+                                {contract.product === 'MILHO' 
+                                    ? 'Qualidade: padrão exportação, umidade até 14%, impureza até 1%, Avariados totais até 6%, sendo 3% ardidos.'
+                                    : contract.product === 'SORGO'
+                                    ? 'Qualidade: padrão exportação, umidade até 13%, impureza até 1%, Avariados e ou ardidos até 8%.'
+                                    : 'Qualidade: padrão exportação, umidade até 14%, impureza até 1%, Avariados e ou ardidos até 8%.'}
+                            </p>
                         </div>
                     </div>
                     <div className="flex p-1 items-center">

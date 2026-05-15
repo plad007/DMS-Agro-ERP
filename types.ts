@@ -26,7 +26,7 @@ export interface BankAccount {
 export interface Contract {
   id: string;
   number: string;
-  product: 'SOJA' | 'MILHO' | 'TRIGO';
+  product: 'SOJA' | 'MILHO' | 'TRIGO' | 'SORGO';
   crop: string;
   sellerName: string;
   sellerDoc?: string;
