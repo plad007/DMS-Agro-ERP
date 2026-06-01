@@ -375,7 +375,7 @@ const ShipmentReportPrint: React.FC<ShipmentReportPrintProps> = ({ shipments, co
                 <td style={{ padding: '4px 6px', border: '1px solid #ddd' }}>{new Date(s.deliveryDate + 'T00:00:00').toLocaleDateString('pt-BR')}</td>
                 <td style={{ padding: '4px 6px', border: '1px solid #ddd', fontFamily: 'monospace', fontWeight: 'bold' }}>{s.plate}</td>
                 <td style={{ padding: '4px 6px', border: '1px solid #ddd' }}>{s.ticketNumber}</td>
-                <td style={{ padding: '4px 6px', border: '1px solid #ddd', textAlign: 'right' }}>{s.bagsCount.toLocaleString('pt-BR')}</td>
+                <td style={{ padding: '4px 6px', border: '1px solid #ddd', textAlign: 'right' }}>{s.bagsCount.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}</td>
                 <td style={{ padding: '4px 6px', border: '1px solid #ddd', textAlign: 'right' }}>{s.weightKg.toLocaleString('pt-BR')}</td>
                 <td style={{ padding: '4px 6px', border: '1px solid #ddd', textAlign: 'right' }}>{valor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
                 <td style={{ padding: '4px 6px', border: '1px solid #ddd', textAlign: 'center' }}>{s.paymentDueDate ? new Date(s.paymentDueDate + 'T00:00:00').toLocaleDateString('pt-BR') : '-'}</td>
@@ -389,7 +389,7 @@ const ShipmentReportPrint: React.FC<ShipmentReportPrintProps> = ({ shipments, co
         <tfoot>
           <tr style={{ background: '#e8e8e8', fontWeight: 'bold' }}>
             <td colSpan={3} style={{ padding: '5px 6px', border: '1px solid #aaa', textAlign: 'right' }}>TOTAIS:</td>
-            <td style={{ padding: '5px 6px', border: '1px solid #aaa', textAlign: 'right' }}>{totalBags.toLocaleString('pt-BR')}</td>
+            <td style={{ padding: '5px 6px', border: '1px solid #aaa', textAlign: 'right' }}>{totalBags.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}</td>
             <td style={{ padding: '5px 6px', border: '1px solid #aaa', textAlign: 'right' }}>{totalWeight.toLocaleString('pt-BR')}</td>
             <td style={{ padding: '5px 6px', border: '1px solid #aaa', textAlign: 'right' }}>{totalValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
             <td colSpan={2} style={{ padding: '5px 6px', border: '1px solid #aaa' }}></td>
@@ -608,7 +608,7 @@ export const Logistics: React.FC<LogisticsProps> = ({ contracts, shipments, onUp
       ticketNumber: editForm.ticketNumber,
       weightKg: editForm.weightKg,
       deliveryDate: editForm.deliveryDate,
-      bagsCount: Math.floor(editForm.weightKg / 60),
+      bagsCount: editForm.weightKg / 60,
     };
     await updateShipment(updated, editingShipment.bagsCount);
     await onUpdate();
@@ -659,7 +659,7 @@ export const Logistics: React.FC<LogisticsProps> = ({ contracts, shipments, onUp
     setIsSubmitting(true);
     // Guarda o ID antes do update para garantir que não muda
     const contractIdToKeep = selectedContract.id;
-    const bags = Math.floor(ticketData.weightKg / 60);
+    const bags = ticketData.weightKg / 60;
     const newShipment: Shipment = {
       id: Math.random().toString(36),
       contractId: contractIdToKeep,
@@ -808,7 +808,7 @@ export const Logistics: React.FC<LogisticsProps> = ({ contracts, shipments, onUp
                   <>
                     <h3 className="font-bold text-slate-800 mb-1">Confirmar exclusão</h3>
                     <p className="text-sm text-slate-600">
-                      Deseja excluir o embarque da placa <strong>{confirmDeleteShipment.plate}</strong> ({confirmDeleteShipment.bagsCount.toLocaleString()} sacas)?
+                      Deseja excluir o embarque da placa <strong>{confirmDeleteShipment.plate}</strong> ({confirmDeleteShipment.bagsCount.toLocaleString('pt-BR', { maximumFractionDigits: 2 })} sacas)?
                     </p>
                     <p className="text-xs text-red-500 mt-2 font-medium">Esta ação não pode ser desfeita.</p>
                   </>
@@ -874,7 +874,7 @@ export const Logistics: React.FC<LogisticsProps> = ({ contracts, shipments, onUp
                   value={editForm.weightKg || ''}
                   onChange={e => setEditForm({ ...editForm, weightKg: Number(e.target.value) })} />
                 {editForm.weightKg > 0 && (
-                  <p className="text-xs text-slate-400 mt-1">= {Math.floor(editForm.weightKg / 60).toLocaleString()} sacas</p>
+                  <p className="text-xs text-slate-400 mt-1">= {(editForm.weightKg / 60).toLocaleString('pt-BR', { maximumFractionDigits: 2 })} sacas</p>
                 )}
               </div>
               <div>
@@ -980,7 +980,7 @@ export const Logistics: React.FC<LogisticsProps> = ({ contracts, shipments, onUp
               <div className="text-right">
                 <p className="text-sm font-medium text-slate-500">Saldo a Embarcar</p>
                 <p className={`text-2xl font-bold ${pendingBags <= 0 ? 'text-emerald-600' : 'text-slate-800'}`}>
-                  {pendingBags <= 0 ? <span className="flex items-center gap-1 justify-end"><CheckCircle2 className="w-6 h-6" /> Concluído</span> : `${pendingBags.toLocaleString()} scs`}
+                  {pendingBags <= 0 ? <span className="flex items-center gap-1 justify-end"><CheckCircle2 className="w-6 h-6" /> Concluído</span> : `${pendingBags.toLocaleString('pt-BR', { maximumFractionDigits: 2 })} scs`}
                 </p>
               </div>
             </div>
@@ -990,12 +990,12 @@ export const Logistics: React.FC<LogisticsProps> = ({ contracts, shipments, onUp
             <div className="grid grid-cols-3 gap-4 text-center">
               <div className="p-4 bg-slate-50 rounded-lg">
                 <p className="text-xs uppercase text-slate-500 font-semibold">Volume Total</p>
-                <p className="font-bold text-lg">{selectedContract.totalBags.toLocaleString()}</p>
+                <p className="font-bold text-lg">{selectedContract.totalBags.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}</p>
                 <p className="text-xs text-slate-400">sacas</p>
               </div>
               <div className="p-4 bg-emerald-50 rounded-lg text-emerald-700">
                 <p className="text-xs uppercase text-emerald-600 font-semibold">Embarcado</p>
-                <p className="font-bold text-lg">{selectedContract.deliveredBags.toLocaleString()}</p>
+                <p className="font-bold text-lg">{selectedContract.deliveredBags.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}</p>
                 <p className="text-xs text-emerald-500">sacas</p>
               </div>
               <div className="p-4 bg-slate-50 rounded-lg">
@@ -1040,7 +1040,7 @@ export const Logistics: React.FC<LogisticsProps> = ({ contracts, shipments, onUp
                       value={ticketData.weightKg || ''} onChange={(e) => setTicketData({ ...ticketData, weightKg: Number(e.target.value) })} />
                     <Scale className="w-4 h-4 text-slate-400 absolute left-2.5 top-4" />
                   </div>
-                  {ticketData.weightKg > 0 && <p className="text-xs text-slate-400 mt-1">= {Math.floor(ticketData.weightKg / 60).toLocaleString()} sacas</p>}
+                  {ticketData.weightKg > 0 && <p className="text-xs text-slate-400 mt-1">= {(ticketData.weightKg / 60).toLocaleString('pt-BR', { maximumFractionDigits: 2 })} sacas</p>}
                 </div>
                 <div>
                   <label className="text-xs font-bold text-slate-500 uppercase">Data do Embarque</label>
@@ -1132,7 +1132,7 @@ export const Logistics: React.FC<LogisticsProps> = ({ contracts, shipments, onUp
                           <td className="px-4 py-3 text-slate-600">{new Date(s.deliveryDate + 'T00:00:00').toLocaleDateString('pt-BR')}</td>
                           <td className="px-4 py-3 font-mono font-bold text-slate-700">{s.plate}</td>
                           <td className="px-4 py-3 text-slate-600">{s.ticketNumber}</td>
-                          <td className="px-4 py-3 text-right font-bold text-emerald-700">{s.bagsCount.toLocaleString()}</td>
+                          <td className="px-4 py-3 text-right font-bold text-emerald-700">{s.bagsCount.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}</td>
                           <td className="px-4 py-3 text-right">
                             {s.paymentDueDate ? (
                               <span className={`font-medium ${isOverdue ? 'text-slate-400' : isUrgent ? 'text-red-600' : 'text-slate-600'}`}>

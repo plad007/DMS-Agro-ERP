@@ -60,7 +60,7 @@ const mapContractFromDB = (c: any): Contract => {
 const mapShipmentFromDB = (s: any): Shipment => ({
     id: s.id, contractId: s.contract_id, plate: s.plate,
     ticketNumber: s.ticket_number, weightKg: s.weight_kg,
-    bagsCount: s.bags_count, date: s.date,
+    bagsCount: s.weight_kg / 60, date: s.date,
     deliveryDate: s.delivery_date ?? s.date,
     paymentDueDate: s.payment_due_date ?? undefined,
     promissoryNoteIssued: s.promissory_note_issued ?? false,
@@ -294,7 +294,7 @@ export const generatePromissoryNumber = async (): Promise<string> => {
 };
 
 export const updateShipment = async (shipment: Shipment, originalBags: number): Promise<void> => {
-    const newBags = Math.floor(shipment.weightKg / 60);
+    const newBags = shipment.weightKg / 60;
     const bagsDiff = newBags - originalBags;
 
     const dbShipment = {

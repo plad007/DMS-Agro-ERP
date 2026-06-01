@@ -126,7 +126,8 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
       status: true,
       freight: false,
       location: true, // Default true now based on feedback
-      shipmentPeriod: true // Default true now based on feedback
+      shipmentPeriod: true, // Default true now based on feedback
+      paymentDate: true
   });
 
   // Report Specific Filters
@@ -1286,7 +1287,9 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
                     <div>
                         <h3 className="font-bold text-slate-700 mb-3 flex items-center gap-2"><Settings2 className="w-4 h-4"/> Colunas Visíveis</h3>
                         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                            {Object.entries(reportColumns).map(([key, checked]) => (
+                            {Object.entries(reportColumns).map(([key, checked]) => {
+                                const labels: any = { date: 'Data', contract: 'Número', crop: 'Safra', seller: 'Vendedor', buyer: 'Comprador', volume: 'Sacas', price: 'Preço', status: 'Status', freight: 'Frete', location: 'Local', shipmentPeriod: 'Embarque', paymentDate: 'Pagamento' };
+                                return (
                                 <label key={key} className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer hover:text-emerald-700">
                                     <input 
                                         type="checkbox" 
@@ -1294,9 +1297,10 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
                                         onChange={() => toggleReportColumn(key as any)}
                                         className="rounded text-emerald-600 focus:ring-emerald-500"
                                     />
-                                    <span className="capitalize">{key.replace(/([A-Z])/g, ' $1').trim()}</span>
+                                    <span className="capitalize">{labels[key] || key.replace(/([A-Z])/g, ' $1').trim()}</span>
                                 </label>
-                            ))}
+                                );
+                            })}
                         </div>
                     </div>
                 </div>
@@ -1342,6 +1346,7 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
                                   {reportColumns.freight && <th className="p-2 border text-center">Frete</th>}
                                   {reportColumns.location && <th className="p-2 border">Local</th>}
                                   {reportColumns.shipmentPeriod && <th className="p-2 border">Embarque</th>}
+                                  {reportColumns.paymentDate && <th className="p-2 border">Pagamento</th>}
                               </tr>
                           </thead>
                           <tbody>
@@ -1358,6 +1363,7 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
                                       {reportColumns.freight && <td className="p-2 border text-center">{c.freightType}</td>}
                                       {reportColumns.location && <td className="p-2 border truncate max-w-[150px]">{c.pickupLocation}</td>}
                                       {reportColumns.shipmentPeriod && <td className="p-2 border">{getPeriodDisplay(c.shipmentStartDate, c.shipmentEndDate)}</td>}
+                                      {reportColumns.paymentDate && <td className="p-2 border">{c.paymentDate ? new Date(c.paymentDate).toLocaleDateString('pt-BR', { timeZone: 'UTC' }) : '-'}</td>}
                                   </tr>
                               ))}
                           </tbody>
@@ -1365,7 +1371,7 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
                               <tr className="bg-slate-50 font-bold border-t-2 border-slate-800">
                                   <td colSpan={[reportColumns.date, reportColumns.contract, reportColumns.crop, reportColumns.seller, reportColumns.buyer].filter(Boolean).length} className="p-2 text-right">TOTAIS:</td>
                                   {reportColumns.volume && <td className="p-2 text-right">{(printData.data as Contract[]).reduce((sum, c) => sum + c.totalBags, 0).toLocaleString()}</td>}
-                                  <td colSpan={[reportColumns.price, reportColumns.status, reportColumns.freight, reportColumns.location, reportColumns.shipmentPeriod].filter(Boolean).length}></td>
+                                  <td colSpan={[reportColumns.price, reportColumns.status, reportColumns.freight, reportColumns.location, reportColumns.shipmentPeriod, reportColumns.paymentDate].filter(Boolean).length}></td>
                               </tr>
                           </tfoot>
                       </table>
