@@ -307,6 +307,7 @@ export const Reports: React.FC<ReportsProps> = ({ contracts }) => {
                                 <option value="SOJA">Soja</option>
                                 <option value="MILHO">Milho</option>
                                 <option value="TRIGO">Trigo</option>
+                                <option value="SORGO">Sorgo</option>
                             </select>
                         </div>
                         <div className="w-px h-6 bg-slate-200"></div>

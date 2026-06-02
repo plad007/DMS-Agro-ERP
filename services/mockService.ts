@@ -220,7 +220,7 @@ export const addShipment = async (shipment: Shipment, contract: Contract) => {
 };
 
 export const generateContractNumber = async (product: string, crop: string): Promise<string> => {
-    const letter = product === 'SOJA' ? 'S' : product === 'MILHO' ? 'M' : 'T';
+    const letter = product === 'SOJA' ? 'S' : product === 'MILHO' ? 'M' : product === 'SORGO' ? 'G' : 'T';
     const cleanCrop = crop.trim();
     let yearSuffix = '00';
     if (cleanCrop.includes('/')) yearSuffix = cleanCrop.split('/')[1];

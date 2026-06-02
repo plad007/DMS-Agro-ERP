@@ -407,7 +407,7 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
       setFormData({...formData, buyerName, buyerDoc: buyer?.doc});
   };
 
-  const handleProductChange = async (newProduct: 'SOJA' | 'MILHO' | 'TRIGO') => {
+  const handleProductChange = async (newProduct: 'SOJA' | 'MILHO' | 'TRIGO' | 'SORGO') => {
       // Usar a safra que está no formulário, ou a padrão se estiver vazia
       const currentCrop = formData.crop || getCurrentCrop();
       
@@ -687,7 +687,7 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
                                 {contract.product === 'MILHO' 
                                     ? 'Qualidade: padrão exportação, umidade até 14%, impureza até 1%, Avariados totais até 6%, sendo 3% ardidos.'
                                     : contract.product === 'SORGO'
-                                    ? 'Qualidade: padrão exportação, umidade até 13%, impureza até 1%, Avariados e ou ardidos até 8%.'
+                                    ? 'Qualidade: 1% impureza, 13,5% umidade, 6% avariado, 3% Ardidos+Brotados, 2% carunchados, 5% quebrados.'
                                     : 'Qualidade: padrão exportação, umidade até 14%, impureza até 1%, Avariados e ou ardidos até 8%.'}
                             </p>
                         </div>
@@ -854,6 +854,7 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
                                 <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium mr-2 ${
                                     contract.product === 'SOJA' ? 'bg-green-100 text-green-800' :
                                     contract.product === 'MILHO' ? 'bg-yellow-100 text-yellow-800' :
+                                    contract.product === 'SORGO' ? 'bg-orange-100 text-orange-800' :
                                     'bg-amber-100 text-amber-800'
                                 }`}>
                                     {contract.product}
@@ -938,6 +939,7 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
                                       <option value="SOJA">SOJA</option>
                                       <option value="MILHO">MILHO</option>
                                       <option value="TRIGO">TRIGO</option>
+                                      <option value="SORGO">SORGO</option>
                                   </select>
                               </div>
                               <div>
@@ -1251,6 +1253,7 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
                                     <option value="SOJA">SOJA</option>
                                     <option value="MILHO">MILHO</option>
                                     <option value="TRIGO">TRIGO</option>
+                                    <option value="SORGO">SORGO</option>
                                 </select>
                             </div>
                             <div>
