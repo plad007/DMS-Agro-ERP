@@ -1,8 +1,8 @@
 
 import React, { useState, useEffect } from 'react';
-import { Plus, Search, Edit2, Trash2, Tractor, Building2, MapPin, X, Save, Eye, Wallet, FileText, Banknote } from 'lucide-react';
+import { Plus, Search, Edit2, Trash2, Tractor, Building2, MapPin, X, Save, Eye, Wallet, FileText, Banknote, Check, AlertTriangle, CheckCircle } from 'lucide-react';
 import { Producer, Buyer, Farm, BankAccount, BuyerPartner } from '../types';
-import { getProducers, getBuyers, saveProducer, saveBuyer, deleteProducer, deleteBuyer } from '../services/mockService';
+import { getProducers, getBuyers, saveProducer, saveBuyer, deleteProducer, deleteBuyer, checkFarmDependencies, deleteFarm, isValidUuid, ProducerPartialSaveError } from '../services/mockService';
 
 // Helper to display friendly names
 const getFunruralLabel = (type: string) => {
@@ -49,12 +49,30 @@ export const Registries: React.FC = () => {
   const [tempFarm, setTempFarm] = useState<Partial<Farm>>({ name: '', address: '' });
   const [tempBank, setTempBank] = useState<Partial<BankAccount>>({ bankName: '', agency: '', account: '', holder: '', holderDoc: '' });
 
+  // Farm Editing & Error/Success States
+  const [editingFarmId, setEditingFarmId] = useState<string | null>(null);
+  const [editingFarmDraft, setEditingFarmDraft] = useState<{ name: string; address: string }>({ name: '', address: '' });
+  const [isSavingProducer, setIsSavingProducer] = useState(false);
+  const [producerModalError, setProducerModalError] = useState<string | null>(null);
+  const [pageSuccessMessage, setPageSuccessMessage] = useState<string | null>(null);
+
+  // Farm Delete Modal State
+  const [farmDeleteTarget, setFarmDeleteTarget] = useState<Farm | null>(null);
+  const [isCheckingFarmDelete, setIsCheckingFarmDelete] = useState(false);
+  const [farmDeleteBlockReason, setFarmDeleteBlockReason] = useState<string | null>(null);
+  const [farmDeleteCheckFailed, setFarmDeleteCheckFailed] = useState(false);
+  const [farmDeleteError, setFarmDeleteError] = useState<string | null>(null);
+  const [isDeletingFarm, setIsDeletingFarm] = useState(false);
+
   const refreshData = async () => {
     setLoading(true);
-    const [p, b] = await Promise.all([getProducers(), getBuyers()]);
-    setProducers(p);
-    setBuyers(b);
-    setLoading(false);
+    try {
+      const [p, b] = await Promise.all([getProducers(), getBuyers()]);
+      setProducers(p);
+      setBuyers(b);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -63,14 +81,28 @@ export const Registries: React.FC = () => {
 
   // --- Handlers for PRODUCER ---
 
+  const resetProducerModalAuxState = () => {
+    setTempFarm({ name: '', address: '' });
+    setTempBank({ bankName: '', agency: '', account: '', holder: '', holderDoc: '' });
+    setEditingFarmId(null);
+    setEditingFarmDraft({ name: '', address: '' });
+    setProducerModalError(null);
+    setFarmDeleteTarget(null);
+    setFarmDeleteBlockReason(null);
+    setFarmDeleteCheckFailed(false);
+    setFarmDeleteError(null);
+  };
+
   const handleEditProducer = (p: Producer) => {
+    resetProducerModalAuxState();
     setProducerForm(JSON.parse(JSON.stringify(p))); // Deep copy
     setIsProducerModalOpen(true);
   };
 
   const handleNewProducer = () => {
+    resetProducerModalAuxState();
     setProducerForm({
-        id: Math.random().toString(36).substr(2, 9), // Temp ID for new
+        id: `temp-${Date.now().toString(36)}`, // Temp ID for new
         farms: [],
         bankDetails: [],
         funruralType: 'COMERCIALIZACAO'
@@ -78,15 +110,113 @@ export const Registries: React.FC = () => {
     setIsProducerModalOpen(true);
   };
 
+  const normalizeFarmName = (name?: string) => (name || '').trim().toLowerCase();
+
+  const hasDuplicateFarmName = (farms: Farm[], candidateName: string, ignoreFarmId?: string) => {
+    const normalized = normalizeFarmName(candidateName);
+    if (!normalized) return false;
+    return farms.some(f => f.id !== ignoreFarmId && normalizeFarmName(f.name) === normalized);
+  };
+
   const handleSaveProducer = async () => {
-    if (!producerForm.name || !producerForm.doc) {
-        alert("Preencha Nome e CPF/CNPJ");
+    if (isSavingProducer) return;
+    setProducerModalError(null);
+
+    if (!producerForm.name?.trim() || !producerForm.doc?.trim()) {
+        setProducerModalError('Preencha Nome do Produtor e CPF/CNPJ antes de salvar.');
         return;
     }
-    setLoading(true);
-    await saveProducer(producerForm as Producer);
-    await refreshData();
-    setIsProducerModalOpen(false);
+
+    let nextFarms = [...(producerForm.farms || [])];
+
+    // Se houver edição inline de fazenda em aberto, aplica e valida antes de salvar
+    if (editingFarmId) {
+        const trimmedDraftName = editingFarmDraft.name.trim();
+        if (!trimmedDraftName) {
+            setProducerModalError('O nome da fazenda em edição não pode ficar vazio.');
+            return;
+        }
+        if (hasDuplicateFarmName(nextFarms, trimmedDraftName, editingFarmId)) {
+            setProducerModalError(`Já existe outra fazenda chamada "${trimmedDraftName}" para este produtor.`);
+            return;
+        }
+        nextFarms = nextFarms.map(f =>
+            f.id === editingFarmId
+                ? { ...f, name: trimmedDraftName, address: editingFarmDraft.address.trim() }
+                : f
+        );
+    }
+
+    // Se o usuário digitou nos campos temporários de fazenda sem clicar no "+", inclui automaticamente
+    const pendingFarmName = (tempFarm.name || '').trim();
+    const pendingFarmAddress = (tempFarm.address || '').trim();
+    let includedPendingFarm = false;
+
+    if (pendingFarmAddress && !pendingFarmName) {
+        setProducerModalError('Você preencheu o endereço da fazenda, mas não informou o Nome da Fazenda.');
+        return;
+    }
+
+    if (pendingFarmName) {
+        if (hasDuplicateFarmName(nextFarms, pendingFarmName)) {
+            setProducerModalError(`Já existe uma fazenda chamada "${pendingFarmName}" para este produtor.`);
+            return;
+        }
+        nextFarms.push({
+            id: `temp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+            name: pendingFarmName,
+            address: pendingFarmAddress
+        });
+        includedPendingFarm = true;
+    }
+
+    const payload: Producer = {
+        ...(producerForm as Producer),
+        name: producerForm.name.trim(),
+        doc: producerForm.doc.trim(),
+        farms: nextFarms
+    };
+
+    // Atualiza o formulário com a fazenda pendente já incorporada para não se perder caso ocorra falha no banco
+    if (includedPendingFarm || editingFarmId) {
+        setProducerForm(payload);
+        if (includedPendingFarm) setTempFarm({ name: '', address: '' });
+        if (editingFarmId) {
+            setEditingFarmId(null);
+            setEditingFarmDraft({ name: '', address: '' });
+        }
+    }
+
+    setIsSavingProducer(true);
+    try {
+        const savedProducer = await saveProducer(payload);
+        await refreshData();
+        setIsProducerModalOpen(false);
+        setPageSuccessMessage(
+            `Produtor "${savedProducer?.name || payload.name}" salvo com sucesso no Supabase (${savedProducer?.farms?.length ?? nextFarms.length} fazenda(s)).`
+        );
+    } catch (error: any) {
+        console.error('Erro ao salvar produtor e fazendas:', error);
+        if (error instanceof ProducerPartialSaveError) {
+            // Preserva o ID real do produtor salvo e os UUIDs das fazendas já persistidas para evitar duplicação na nova tentativa
+            const savedFarmsByName = new Map(
+                error.savedFarms.map(sf => [normalizeFarmName(sf.name), sf])
+            );
+            setProducerForm(prev => ({
+                ...prev,
+                id: error.savedProducerId,
+                farms: (prev.farms || []).map(f => {
+                    if (isValidUuid(f.id)) return f;
+                    const persisted = savedFarmsByName.get(normalizeFarmName(f.name));
+                    return persisted ? persisted : f;
+                })
+            }));
+            await refreshData();
+        }
+        setProducerModalError(error?.message || 'Não foi possível salvar os dados no Supabase.');
+    } finally {
+        setIsSavingProducer(false);
+    }
   };
 
   const handleDeleteProducer = async (id: string) => {
@@ -98,11 +228,25 @@ export const Registries: React.FC = () => {
   };
 
   const addFarm = () => {
-      if(!tempFarm.name) return;
+      setProducerModalError(null);
+      const trimmedName = (tempFarm.name || '').trim();
+      const trimmedAddress = (tempFarm.address || '').trim();
+
+      if (!trimmedName) {
+          setProducerModalError('Informe o nome da fazenda antes de adicionar.');
+          return;
+      }
+
+      const currentFarms = producerForm.farms || [];
+      if (hasDuplicateFarmName(currentFarms, trimmedName)) {
+          setProducerModalError(`Já existe uma fazenda chamada "${trimmedName}" cadastrada para este produtor.`);
+          return;
+      }
+
       const newFarm: Farm = {
-          id: Math.random().toString(36).substr(2, 9),
-          name: tempFarm.name,
-          address: tempFarm.address || ''
+          id: `temp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+          name: trimmedName,
+          address: trimmedAddress
       };
       setProducerForm(prev => ({
           ...prev,
@@ -111,11 +255,118 @@ export const Registries: React.FC = () => {
       setTempFarm({ name: '', address: '' });
   };
 
-  const removeFarm = (id: string) => {
+  const startEditFarm = (farm: Farm) => {
+      setProducerModalError(null);
+      setEditingFarmId(farm.id);
+      setEditingFarmDraft({ name: farm.name || '', address: farm.address || '' });
+  };
+
+  const cancelEditFarm = () => {
+      setEditingFarmId(null);
+      setEditingFarmDraft({ name: '', address: '' });
+  };
+
+  const saveFarmEdit = () => {
+      if (!editingFarmId) return;
+      setProducerModalError(null);
+      const trimmedName = editingFarmDraft.name.trim();
+      const trimmedAddress = editingFarmDraft.address.trim();
+
+      if (!trimmedName) {
+          setProducerModalError('O nome da fazenda não pode ficar vazio.');
+          return;
+      }
+
+      const currentFarms = producerForm.farms || [];
+      if (hasDuplicateFarmName(currentFarms, trimmedName, editingFarmId)) {
+          setProducerModalError(`Já existe outra fazenda chamada "${trimmedName}" para este produtor.`);
+          return;
+      }
+
       setProducerForm(prev => ({
           ...prev,
-          farms: prev.farms?.filter(f => f.id !== id)
+          farms: (prev.farms || []).map(f =>
+              f.id === editingFarmId ? { ...f, name: trimmedName, address: trimmedAddress } : f
+          )
       }));
+      setEditingFarmId(null);
+      setEditingFarmDraft({ name: '', address: '' });
+  };
+
+  const handleRequestDeleteFarm = async (farm: Farm) => {
+      setProducerModalError(null);
+      setFarmDeleteTarget(farm);
+      setFarmDeleteBlockReason(null);
+      setFarmDeleteCheckFailed(false);
+      setFarmDeleteError(null);
+
+      if (!isValidUuid(farm.id)) {
+          setIsCheckingFarmDelete(false);
+          return;
+      }
+
+      setIsCheckingFarmDelete(true);
+      try {
+          const deps = await checkFarmDependencies(farm.id, producerForm.id);
+          if (!deps.canDelete) {
+              setFarmDeleteBlockReason(deps.reason || 'Esta fazenda possui contratos vinculados e não pode ser excluída.');
+          }
+      } catch (error: any) {
+          console.error('Erro ao verificar vínculos da fazenda:', error);
+          setFarmDeleteCheckFailed(true);
+          setFarmDeleteError(error?.message || 'Não foi possível verificar vínculos da fazenda no banco de dados.');
+      } finally {
+          setIsCheckingFarmDelete(false);
+      }
+  };
+
+  const handleConfirmDeleteFarm = async () => {
+      if (!farmDeleteTarget || isDeletingFarm || isCheckingFarmDelete || farmDeleteBlockReason || farmDeleteCheckFailed) {
+          return;
+      }
+
+      // Fazenda ainda não persistida no Supabase: remove apenas do formulário
+      if (!isValidUuid(farmDeleteTarget.id)) {
+          setProducerForm(prev => ({
+              ...prev,
+              farms: (prev.farms || []).filter(f => f.id !== farmDeleteTarget.id)
+          }));
+          if (editingFarmId === farmDeleteTarget.id) cancelEditFarm();
+          setFarmDeleteTarget(null);
+          return;
+      }
+
+      if (!isValidUuid(producerForm.id)) {
+          setFarmDeleteError('ID do produtor inválido para excluir a fazenda.');
+          return;
+      }
+
+      setIsDeletingFarm(true);
+      setFarmDeleteError(null);
+      try {
+          await deleteFarm(farmDeleteTarget.id, producerForm.id!);
+          setProducerForm(prev => ({
+              ...prev,
+              farms: (prev.farms || []).filter(f => f.id !== farmDeleteTarget.id)
+          }));
+          if (editingFarmId === farmDeleteTarget.id) cancelEditFarm();
+          setFarmDeleteTarget(null);
+          await refreshData();
+          setPageSuccessMessage(`Fazenda "${farmDeleteTarget.name || 'sem nome'}" excluída com sucesso do Supabase.`);
+      } catch (error: any) {
+          console.error('Erro ao excluir fazenda:', error);
+          setFarmDeleteError(error?.message || 'Não foi possível excluir a fazenda no Supabase.');
+      } finally {
+          setIsDeletingFarm(false);
+      }
+  };
+
+  const handleCloseFarmDeleteModal = () => {
+      if (isDeletingFarm) return;
+      setFarmDeleteTarget(null);
+      setFarmDeleteBlockReason(null);
+      setFarmDeleteCheckFailed(false);
+      setFarmDeleteError(null);
   };
 
   const addBank = () => {
@@ -253,6 +504,18 @@ export const Registries: React.FC = () => {
       </div>
 
       {loading && <div className="text-center py-4 text-slate-400 text-sm animate-pulse">Sincronizando com banco de dados...</div>}
+
+      {pageSuccessMessage && (
+        <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 px-4 py-3 rounded-lg flex items-center justify-between text-sm">
+          <div className="flex items-center gap-2 font-medium">
+            <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span>{pageSuccessMessage}</span>
+          </div>
+          <button onClick={() => setPageSuccessMessage(null)} className="text-emerald-600 hover:text-emerald-800">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
 
       {/* CONTENT: PRODUCERS */}
       {activeTab === 'producers' && (
@@ -455,11 +718,18 @@ export const Registries: React.FC = () => {
                 <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50 sticky top-0 z-10">
                     <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2">
                         <Tractor className="w-5 h-5 text-emerald-600" />
-                        {/* TypeScript fix: Ensure ID exists before checking length, default to 0 */}
-                        {(producerForm.id?.length || 0) > 15 ? 'Editar Produtor' : 'Novo Produtor'}
+                        {isValidUuid(producerForm.id) ? 'Editar Produtor' : 'Novo Produtor'}
                     </h3>
-                    <button onClick={() => setIsProducerModalOpen(false)}><X className="w-5 h-5 text-slate-400" /></button>
+                    <button onClick={() => !isSavingProducer && setIsProducerModalOpen(false)} disabled={isSavingProducer}><X className="w-5 h-5 text-slate-400" /></button>
                 </div>
+
+                {producerModalError && (
+                  <div className="mx-6 mt-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2 text-sm text-red-700">
+                    <AlertTriangle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+                    <div className="flex-1">{producerModalError}</div>
+                    <button onClick={() => setProducerModalError(null)} className="text-red-500 hover:text-red-700"><X className="w-4 h-4" /></button>
+                  </div>
+                )}
                 
                 <div className="p-6 space-y-6">
                     {/* Basic Info */}
@@ -507,30 +777,99 @@ export const Registries: React.FC = () => {
                         {/* List */}
                         <div className="space-y-2 mb-3">
                             {producerForm.farms?.map((f, i) => (
-                                <div key={f.id || i} className="flex items-center justify-between bg-slate-50 p-2 rounded border border-slate-200">
-                                    <div className="text-sm">
-                                        <span className="font-bold text-emerald-800 block">{f.name}</span>
-                                        <span className="text-slate-500">{f.address}</span>
-                                    </div>
-                                    <button onClick={() => removeFarm(f.id)} className="text-red-400 hover:text-red-600 p-1"><X className="w-4 h-4" /></button>
+                                <div key={f.id || i} className="bg-slate-50 p-2.5 rounded border border-slate-200">
+                                    {editingFarmId === f.id ? (
+                                        <div className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-end">
+                                            <div className="flex-1">
+                                                <label className="text-[11px] text-slate-500 font-bold">Nome da Fazenda</label>
+                                                <input
+                                                    type="text"
+                                                    className="w-full border rounded p-1.5 text-sm bg-white"
+                                                    value={editingFarmDraft.name}
+                                                    onChange={e => setEditingFarmDraft(prev => ({ ...prev, name: e.target.value }))}
+                                                    placeholder="Nome da fazenda"
+                                                />
+                                            </div>
+                                            <div className="flex-[2]">
+                                                <label className="text-[11px] text-slate-500 font-bold">Endereço</label>
+                                                <input
+                                                    type="text"
+                                                    className="w-full border rounded p-1.5 text-sm bg-white"
+                                                    value={editingFarmDraft.address}
+                                                    onChange={e => setEditingFarmDraft(prev => ({ ...prev, address: e.target.value }))}
+                                                    placeholder="Rodovia, Km, Município"
+                                                />
+                                            </div>
+                                            <div className="flex gap-1 shrink-0">
+                                                <button
+                                                    type="button"
+                                                    onClick={saveFarmEdit}
+                                                    className="bg-emerald-600 text-white p-2 rounded hover:bg-emerald-700"
+                                                    title="Confirmar edição da fazenda"
+                                                >
+                                                    <Check className="w-4 h-4" />
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={cancelEditFarm}
+                                                    className="bg-slate-200 text-slate-600 p-2 rounded hover:bg-slate-300"
+                                                    title="Cancelar edição"
+                                                >
+                                                    <X className="w-4 h-4" />
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className="flex items-center justify-between gap-3">
+                                            <div className="text-sm min-w-0">
+                                                <span className="font-bold text-emerald-800 block">
+                                                    {f.name || <span className="italic text-amber-600">(Fazenda sem nome — clique em editar para corrigir)</span>}
+                                                </span>
+                                                <span className="text-slate-500">{f.address || '-'}</span>
+                                            </div>
+                                            <div className="flex items-center gap-1 shrink-0">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => startEditFarm(f)}
+                                                    className="text-slate-400 hover:text-emerald-600 p-1"
+                                                    title="Editar fazenda"
+                                                >
+                                                    <Edit2 className="w-4 h-4" />
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleRequestDeleteFarm(f)}
+                                                    className="text-slate-400 hover:text-red-600 p-1"
+                                                    title="Excluir fazenda"
+                                                >
+                                                    <Trash2 className="w-4 h-4" />
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
                             ))}
                             {(!producerForm.farms || producerForm.farms.length === 0) && <p className="text-sm text-slate-400 italic">Nenhuma fazenda cadastrada.</p>}
                         </div>
 
                         {/* Add Farm */}
-                        <div className="flex gap-2 items-end bg-slate-100 p-3 rounded-lg">
-                            <div className="flex-1">
-                                <label className="text-xs text-slate-500 font-bold">Nome da Fazenda</label>
-                                <input type="text" className="w-full border rounded p-1.5 text-sm" value={tempFarm.name} onChange={e => setTempFarm({...tempFarm, name: e.target.value})} placeholder="Ex: Fazenda Colorado" />
+                        <div className="bg-slate-100 p-3 rounded-lg">
+                            <div className="flex gap-2 items-end">
+                                <div className="flex-1">
+                                    <label className="text-xs text-slate-500 font-bold">Nome da Fazenda</label>
+                                    <input type="text" className="w-full border rounded p-1.5 text-sm bg-white" value={tempFarm.name || ''} onChange={e => setTempFarm({...tempFarm, name: e.target.value})} placeholder="Ex: Fazenda Colorado" />
+                                </div>
+                                <div className="flex-[2]">
+                                    <label className="text-xs text-slate-500 font-bold">Endereço</label>
+                                    <input type="text" className="w-full border rounded p-1.5 text-sm bg-white" value={tempFarm.address || ''} onChange={e => setTempFarm({...tempFarm, address: e.target.value})} placeholder="Rodovia, Km, Município" />
+                                </div>
+                                <button type="button" onClick={addFarm} className="bg-emerald-600 text-white p-2 rounded hover:bg-emerald-700" title="Adicionar fazenda à lista">
+                                    <Plus className="w-4 h-4" />
+                                </button>
                             </div>
-                             <div className="flex-[2]">
-                                <label className="text-xs text-slate-500 font-bold">Endereço</label>
-                                <input type="text" className="w-full border rounded p-1.5 text-sm" value={tempFarm.address} onChange={e => setTempFarm({...tempFarm, address: e.target.value})} placeholder="Rodovia, Km, Município" />
-                            </div>
-                            <button onClick={addFarm} className="bg-emerald-600 text-white p-2 rounded hover:bg-emerald-700">
-                                <Plus className="w-4 h-4" />
-                            </button>
+                            <p className="text-[11px] text-slate-500 mt-1.5">
+                                Clique em <strong>+</strong> para adicionar várias fazendas, ou preencha e clique em <strong>Salvar</strong> diretamente.
+                            </p>
                         </div>
                     </div>
 
@@ -585,10 +924,10 @@ export const Registries: React.FC = () => {
 
                 </div>
                 <div className="p-4 border-t bg-slate-50 flex justify-end gap-2">
-                    <button onClick={() => setIsProducerModalOpen(false)} className="px-4 py-2 text-slate-600 hover:bg-slate-200 rounded">Cancelar</button>
-                    <button onClick={handleSaveProducer} disabled={loading} className="px-4 py-2 bg-emerald-600 text-white rounded hover:bg-emerald-700 flex items-center gap-2">
-                        {loading && <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>}
-                        <Save className="w-4 h-4"/> Salvar
+                    <button onClick={() => setIsProducerModalOpen(false)} disabled={isSavingProducer} className="px-4 py-2 text-slate-600 hover:bg-slate-200 rounded disabled:opacity-50">Cancelar</button>
+                    <button onClick={handleSaveProducer} disabled={isSavingProducer} className="px-4 py-2 bg-emerald-600 text-white rounded hover:bg-emerald-700 flex items-center gap-2 disabled:opacity-50">
+                        {isSavingProducer ? <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> : <Save className="w-4 h-4"/>}
+                        {isSavingProducer ? 'Salvando...' : 'Salvar'}
                     </button>
                 </div>
             </div>
@@ -696,6 +1035,95 @@ export const Registries: React.FC = () => {
                 </div>
             </div>
           </div>
+      )}
+
+      {/* FARM DELETE CONFIRMATION MODAL */}
+      {farmDeleteTarget && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6">
+            <div className="flex items-start gap-4 mb-5">
+              <div className={`p-2.5 rounded-lg shrink-0 ${farmDeleteBlockReason || farmDeleteCheckFailed ? 'bg-amber-100 text-amber-600' : 'bg-red-100 text-red-600'}`}>
+                {farmDeleteBlockReason || farmDeleteCheckFailed ? <AlertTriangle className="w-5 h-5" /> : <Trash2 className="w-5 h-5" />}
+              </div>
+              <div className="flex-1 min-w-0">
+                {isCheckingFarmDelete ? (
+                  <>
+                    <h3 className="font-bold text-slate-800 mb-1">Verificando vínculos da fazenda</h3>
+                    <p className="text-sm text-slate-600 flex items-center gap-2">
+                      <span className="inline-block w-3.5 h-3.5 border-2 border-slate-300 border-t-emerald-600 rounded-full animate-spin" />
+                      Verificando contratos vinculados a {farmDeleteTarget.name || 'esta fazenda'}...
+                    </p>
+                  </>
+                ) : farmDeleteBlockReason ? (
+                  <>
+                    <h3 className="font-bold text-slate-800 mb-1">Exclusão bloqueada</h3>
+                    <p className="text-sm text-slate-600">{farmDeleteBlockReason}</p>
+                  </>
+                ) : farmDeleteCheckFailed ? (
+                  <>
+                    <h3 className="font-bold text-slate-800 mb-1">Não foi possível verificar vínculos</h3>
+                    <p className="text-sm text-red-600">{farmDeleteError}</p>
+                  </>
+                ) : (
+                  <>
+                    <h3 className="font-bold text-slate-800 mb-1">Confirmar exclusão de fazenda</h3>
+                    <p className="text-sm text-slate-600">
+                      Deseja excluir a fazenda <strong>{farmDeleteTarget.name || '(sem nome)'}</strong>
+                      {isValidUuid(farmDeleteTarget.id) ? ' definitivamente do banco de dados?' : ' da lista deste formulário?'}
+                    </p>
+                    {isValidUuid(farmDeleteTarget.id) && (
+                      <p className="text-xs text-red-600 mt-2 font-medium">
+                        Atenção: esta ação removerá o registro da fazenda permanentemente no Supabase.
+                      </p>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+
+            {!isCheckingFarmDelete && !farmDeleteBlockReason && !farmDeleteCheckFailed && farmDeleteError && (
+              <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700 font-medium">
+                {farmDeleteError}
+              </div>
+            )}
+
+            <div className="flex justify-end gap-2">
+              {isCheckingFarmDelete || farmDeleteBlockReason || farmDeleteCheckFailed ? (
+                <button
+                  type="button"
+                  onClick={handleCloseFarmDeleteModal}
+                  className="px-4 py-2 text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg text-sm font-medium transition-colors"
+                >
+                  {isCheckingFarmDelete ? 'Cancelar' : 'Fechar'}
+                </button>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    onClick={handleCloseFarmDeleteModal}
+                    disabled={isDeletingFarm}
+                    className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg text-sm font-medium disabled:opacity-50 transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleConfirmDeleteFarm}
+                    disabled={isDeletingFarm}
+                    className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 text-sm font-medium flex items-center gap-2 disabled:opacity-50 transition-colors"
+                  >
+                    {isDeletingFarm ? (
+                      <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    ) : (
+                      <Trash2 className="w-4 h-4" />
+                    )}
+                    Confirmar exclusão
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
       )}
 
     </div>

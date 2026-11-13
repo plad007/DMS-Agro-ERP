@@ -1,5 +1,38 @@
 import { supabase } from './supabase';
-import { Contract, Shipment, MarketData, Producer, Buyer, BankAccount, PaymentType } from '../types';
+import { Contract, Shipment, MarketData, Producer, Buyer, BankAccount, PaymentType, Farm } from '../types';
+
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export const isValidUuid = (id?: string | null): boolean => Boolean(id && UUID_REGEX.test(id));
+
+export class ProducerPartialSaveError extends Error {
+    savedProducerId: string;
+    savedFarms: Farm[];
+
+    constructor(message: string, savedProducerId: string, savedFarms: Farm[] = []) {
+        super(message);
+        this.name = 'ProducerPartialSaveError';
+        this.savedProducerId = savedProducerId;
+        this.savedFarms = savedFarms;
+    }
+}
+
+const formatSupabaseDbError = (error: any, action: string): string => {
+    const message = error?.message || 'Erro desconhecido';
+    if (error?.code === '42501' || /row-level security|permission denied/i.test(message)) {
+        return `Permissão negada pelas políticas de segurança (RLS) do Supabase ao ${action}.`;
+    }
+    if (error?.code === '23505') {
+        return `Registro duplicado detectado pelo banco de dados ao ${action}.`;
+    }
+    if (error?.code === '23502') {
+        return `Campo obrigatório ausente ou coluna sem valor padrão (UUID/DEFAULT) no Supabase ao ${action}: ${message}`;
+    }
+    if (error?.code === '23503') {
+        return `Operação bloqueada por vínculo de relacionamento no banco de dados ao ${action}.`;
+    }
+    return `Erro ao ${action} no Supabase: ${message}`;
+};
 
 const mapProducerFromDB = (p: any): Producer => {
     let banks: BankAccount[] = [];
@@ -121,32 +154,248 @@ export const getShipments = async (contractId?: string): Promise<Shipment[]> => 
 };
 
 export const saveProducer = async (producer: Producer): Promise<Producer | null> => {
+    const trimmedName = (producer.name || '').trim();
+    const trimmedDoc = (producer.doc || '').trim();
+    const farmsList = producer.farms || [];
+
+    // Validar nomes vazios em novas fazendas e duplicidade dentro do mesmo produtor
+    const seenNormalizedNames = new Set<string>();
+    for (const farm of farmsList) {
+        const normalizedFarmName = (farm.name || '').trim().toLowerCase();
+        if (!isValidUuid(farm.id) && !normalizedFarmName) {
+            throw new Error('O nome da fazenda não pode ficar vazio ao cadastrar uma nova fazenda.');
+        }
+        if (normalizedFarmName) {
+            if (seenNormalizedNames.has(normalizedFarmName)) {
+                throw new Error(`Nome de fazenda duplicado neste produtor: "${farm.name.trim()}".`);
+            }
+            seenNormalizedNames.add(normalizedFarmName);
+        }
+    }
+
     const dbProducer = {
-        name: producer.name, doc: producer.doc, state_insc: producer.stateInsc,
-        email: producer.email, region: producer.region,
-        funrural_type: producer.funruralType, bank_details: producer.bankDetails
+        name: trimmedName,
+        doc: trimmedDoc,
+        state_insc: producer.stateInsc,
+        email: producer.email,
+        region: producer.region,
+        funrural_type: producer.funruralType,
+        bank_details: producer.bankDetails
     };
+
     let producerId = producer.id;
-    let result = null;
-    const isNew = producer.id.length < 15;
-    if (isNew) {
+    const isNewProducer = !isValidUuid(producer.id);
+
+    if (isNewProducer) {
         const { data, error } = await supabase.from('producers').insert(dbProducer).select().single();
-        if (error) throw error;
-        result = data; producerId = data.id;
+        if (error) {
+            throw new Error(formatSupabaseDbError(error, 'cadastrar o produtor'));
+        }
+        if (!data?.id) {
+            throw new Error('O Supabase não retornou o ID do produtor recém-cadastrado.');
+        }
+        producerId = data.id;
     } else {
-        const { data, error } = await supabase.from('producers').update(dbProducer).eq('id', producerId).select().single();
-        if (error) throw error;
-        result = data;
+        const { data, error } = await supabase
+            .from('producers')
+            .update(dbProducer)
+            .eq('id', producerId)
+            .select()
+            .single();
+        if (error) {
+            throw new Error(formatSupabaseDbError(error, 'atualizar o produtor'));
+        }
+        if (!data?.id) {
+            throw new Error('Produtor não encontrado ou atualização não permitida pelo Supabase.');
+        }
     }
-    if (producer.farms && producer.farms.length > 0) {
-        const farmsToUpsert = producer.farms.map(f => ({
-            id: f.id.length < 15 ? undefined : f.id,
-            producer_id: producerId, name: f.name, address: f.address
+
+    const existingFarms = farmsList.filter(f => isValidUuid(f.id));
+    const newFarms = farmsList.filter(f => !isValidUuid(f.id));
+    const persistedFarms: Farm[] = [];
+
+    // 1. Atualizar fazendas existentes individualmente preservando o UUID original
+    for (const farm of existingFarms) {
+        const { data: updatedRows, error: updateError } = await supabase
+            .from('farms')
+            .update({
+                name: (farm.name || '').trim(),
+                address: (farm.address || '').trim()
+            })
+            .eq('id', farm.id)
+            .eq('producer_id', producerId)
+            .select('id, name, address');
+
+        if (updateError) {
+            throw new ProducerPartialSaveError(
+                `O produtor foi salvo no banco, porém falhou ao atualizar a fazenda "${farm.name || farm.id}": ${formatSupabaseDbError(updateError, 'atualizar fazenda')}`,
+                producerId,
+                persistedFarms
+            );
+        }
+
+        if (!updatedRows || updatedRows.length === 0) {
+            throw new ProducerPartialSaveError(
+                `O produtor foi salvo no banco, porém a atualização da fazenda "${farm.name || farm.id}" não foi confirmada (registro não encontrado para este produtor ou bloqueado por RLS).`,
+                producerId,
+                persistedFarms
+            );
+        }
+
+        persistedFarms.push({
+            id: updatedRows[0].id,
+            name: updatedRows[0].name,
+            address: updatedRows[0].address || ''
+        });
+    }
+
+    // 2. Inserir novas fazendas sem enviar IDs temporários (UUID gerado pelo PostgreSQL)
+    if (newFarms.length > 0) {
+        const rowsToInsert = newFarms.map(f => ({
+            producer_id: producerId,
+            name: f.name.trim(),
+            address: (f.address || '').trim()
         }));
-        const { error: farmsError } = await supabase.from('farms').upsert(farmsToUpsert);
-        if (farmsError) console.error("Error saving farms", farmsError);
+
+        const { data: insertedRows, error: insertError } = await supabase
+            .from('farms')
+            .insert(rowsToInsert)
+            .select('id, name, address');
+
+        if (insertError) {
+            throw new ProducerPartialSaveError(
+                `O produtor foi salvo no banco, porém falhou ao cadastrar ${newFarms.length} nova(s) fazenda(s): ${formatSupabaseDbError(insertError, 'inserir fazenda(s)')}`,
+                producerId,
+                persistedFarms
+            );
+        }
+
+        if (!insertedRows || insertedRows.length !== rowsToInsert.length) {
+            throw new ProducerPartialSaveError(
+                'O produtor foi salvo no banco, porém o Supabase não confirmou a gravação de todas as novas fazendas.',
+                producerId,
+                persistedFarms
+            );
+        }
+
+        insertedRows.forEach((row: any) => {
+            persistedFarms.push({
+                id: row.id,
+                name: row.name,
+                address: row.address || ''
+            });
+        });
     }
-    return mapProducerFromDB(result);
+
+    // 3. Recarregar o registro completo confirmado no Supabase
+    const { data: refreshedProducer, error: refetchError } = await supabase
+        .from('producers')
+        .select('*, farms(*)')
+        .eq('id', producerId)
+        .single();
+
+    if (refetchError || !refreshedProducer) {
+        return {
+            ...producer,
+            id: producerId,
+            name: trimmedName,
+            doc: trimmedDoc,
+            farms: persistedFarms
+        };
+    }
+
+    return mapProducerFromDB(refreshedProducer);
+};
+
+export interface FarmDependenciesResult {
+    canDelete: boolean;
+    reason?: string;
+    contractsCount: number;
+    contractNumbers: string[];
+    isPersisted: boolean;
+}
+
+export const checkFarmDependencies = async (farmId: string, producerId?: string): Promise<FarmDependenciesResult> => {
+    if (!isValidUuid(farmId)) {
+        return {
+            canDelete: true,
+            contractsCount: 0,
+            contractNumbers: [],
+            isPersisted: false
+        };
+    }
+
+    const { data: farmRow, error: farmError } = await supabase
+        .from('farms')
+        .select('id, producer_id, name')
+        .eq('id', farmId)
+        .maybeSingle();
+
+    if (farmError) {
+        throw new Error(formatSupabaseDbError(farmError, 'verificar a fazenda no banco de dados'));
+    }
+
+    if (!farmRow) {
+        throw new Error('Fazenda não encontrada no banco de dados.');
+    }
+
+    if (producerId && farmRow.producer_id !== producerId) {
+        throw new Error('Esta fazenda não pertence ao produtor selecionado.');
+    }
+
+    const { data: linkedContracts, error: contractsError } = await supabase
+        .from('contracts')
+        .select('id, number')
+        .eq('farm_id', farmId);
+
+    if (contractsError) {
+        throw new Error(formatSupabaseDbError(contractsError, 'verificar contratos vinculados à fazenda'));
+    }
+
+    const contractNumbers = (linkedContracts || []).map((c: any) => c.number).filter(Boolean);
+    const contractsCount = linkedContracts?.length || 0;
+
+    if (contractsCount > 0) {
+        const preview = contractNumbers.slice(0, 5).join(', ') + (contractNumbers.length > 5 ? '...' : '');
+        return {
+            canDelete: false,
+            contractsCount,
+            contractNumbers,
+            isPersisted: true,
+            reason: `Esta fazenda está vinculada a ${contractsCount} contrato(s)${preview ? ` (${preview})` : ''}. A exclusão foi bloqueada para preservar os vínculos históricos.`
+        };
+    }
+
+    return {
+        canDelete: true,
+        contractsCount: 0,
+        contractNumbers: [],
+        isPersisted: true
+    };
+};
+
+export const deleteFarm = async (farmId: string, producerId: string): Promise<void> => {
+    const deps = await checkFarmDependencies(farmId, producerId);
+    if (!deps.canDelete) {
+        throw new Error(deps.reason || 'Esta fazenda possui contratos vinculados e não pode ser excluída.');
+    }
+
+    if (!deps.isPersisted) return;
+
+    const { data: deletedRows, error } = await supabase
+        .from('farms')
+        .delete()
+        .eq('id', farmId)
+        .eq('producer_id', producerId)
+        .select('id');
+
+    if (error) {
+        throw new Error(formatSupabaseDbError(error, 'excluir a fazenda'));
+    }
+
+    if (!deletedRows || deletedRows.length === 0) {
+        throw new Error('A fazenda não pôde ser excluída no Supabase. Verifique se ela ainda existe ou se as políticas de segurança (RLS) permitem a exclusão.');
+    }
 };
 
 export const deleteProducer = async (id: string) => {
