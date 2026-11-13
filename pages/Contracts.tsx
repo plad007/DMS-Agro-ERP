@@ -1,9 +1,9 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { Plus, Search, Filter, Download, FileSpreadsheet, Lock, Unlock, Edit2, Share2, CheckCircle, FileText, Calendar, MapPin, DollarSign, Truck, Calculator, Eye, Printer, X, Sprout, FileBarChart, Settings2, FileDown, Send, Banknote } from 'lucide-react';
+import { Plus, Search, Filter, Download, FileSpreadsheet, Lock, Unlock, Edit2, Share2, CheckCircle, FileText, Calendar, MapPin, DollarSign, Truck, Calculator, Eye, Printer, X, Sprout, FileBarChart, Settings2, FileDown, Send, Banknote, Trash2, AlertTriangle } from 'lucide-react';
 import { Contract, PricingMode, ContractStatus, MarketData, Producer, Buyer, FreightType, BankAccount } from '../types';
-import { generateContractNumber, saveContract, getProducers, getBuyers } from '../services/mockService';
+import { generateContractNumber, saveContract, deleteContract, checkContractDependencies, getProducers, getBuyers } from '../services/mockService';
 
 interface ContractsProps {
   contracts: Contract[];
@@ -145,9 +145,17 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
 
   const [viewingContract, setViewingContract] = useState<Contract | null>(null);
   const [editingContract, setEditingContract] = useState<Contract | null>(null);
+
+  // Delete Contract Modal State
+  const [deleteTarget, setDeleteTarget] = useState<Contract | null>(null);
+  const [isCheckingDelete, setIsCheckingDelete] = useState(false);
+  const [deleteBlockReason, setDeleteBlockReason] = useState<string | null>(null);
+  const [deleteCheckFailed, setDeleteCheckFailed] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
   
   // NEW: Dedicated Printing State (Agora usa 'type' para saber se é relatório ou individual)
-  const [printData, setPrintData] = useState<{ type: 'SINGLE' | 'REPORT', data: any } | null>(null);
+  const [printData, setPrintData] = useState<{ type: 'SINGLE' | 'REPORT', data: any, includeCommission?: boolean } | null>(null);
 
   const [filter, setFilter] = useState('');
   
@@ -224,12 +232,12 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
   }, [isImmediate, startFortnight, startMonth, startYear, endFortnight, endMonth, endYear, isModalOpen]);
 
   // Handlers
-  const handlePrintContract = (contract: Contract) => {
-    setPrintData({ type: 'SINGLE', data: contract });
+  const handlePrintContract = (contract: Contract, includeCommission = false) => {
+    setPrintData({ type: 'SINGLE', data: contract, includeCommission });
   };
   
-  const handlePdf = (contract: Contract) => {
-    setPrintData({ type: 'SINGLE', data: contract });
+  const handlePdf = (contract: Contract, includeCommission = false) => {
+    setPrintData({ type: 'SINGLE', data: contract, includeCommission });
   };
   
   const handlePrintReport = () => {
@@ -244,6 +252,51 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
   const handleSendLink = (contract: Contract) => {
       const link = `https://dms-agro.app/contratos/${contract.id}/assinar`;
       alert(`LINK GERADO COM SUCESSO!\n\n${link}\n\nO link foi copiado para a área de transferência e enviado via integração WhatsApp.`);
+  };
+
+  const handleRequestDelete = async (contract: Contract) => {
+      setDeleteTarget(contract);
+      setDeleteBlockReason(null);
+      setDeleteCheckFailed(false);
+      setDeleteError(null);
+      setIsCheckingDelete(true);
+
+      try {
+          const deps = await checkContractDependencies(contract.id);
+          if (!deps.canDelete) {
+              setDeleteBlockReason(deps.reason || 'Este contrato possui registros vinculados e não pode ser excluído.');
+          }
+      } catch (error: any) {
+          console.error('Erro ao verificar vínculos do contrato:', error);
+          setDeleteCheckFailed(true);
+          setDeleteError(error?.message || 'Não foi possível verificar os vínculos deste contrato no banco de dados.');
+      } finally {
+          setIsCheckingDelete(false);
+      }
+  };
+
+  const handleConfirmDelete = async () => {
+      if (!deleteTarget || isDeleting || isCheckingDelete || deleteBlockReason || deleteCheckFailed) return;
+      setIsDeleting(true);
+      setDeleteError(null);
+      try {
+          await deleteContract(deleteTarget.id);
+          await onUpdate();
+          setDeleteTarget(null);
+      } catch (error: any) {
+          console.error('Erro ao excluir contrato:', error);
+          setDeleteError(error?.message || 'Não foi possível excluir o contrato.');
+      } finally {
+          setIsDeleting(false);
+      }
+  };
+
+  const handleCloseDeleteModal = () => {
+      if (isDeleting) return;
+      setDeleteTarget(null);
+      setDeleteBlockReason(null);
+      setDeleteCheckFailed(false);
+      setDeleteError(null);
   };
 
   const handleEdit = (contract: Contract) => {
@@ -269,7 +322,15 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
     setEndMonth(end.getUTCMonth());
     setEndYear(end.getUTCFullYear());
     
-    const seller = producersList.find(p => p.name === contract.sellerName);
+    const seller = findProducerForContract(contract);
+    const resolvedFarm = resolveContractFarm(contract, seller);
+    setFormData({
+        ...contract,
+        sellerId: contract.sellerId || seller?.id,
+        farmId: resolvedFarm.id,
+        farmName: resolvedFarm.name,
+    });
+
     if(seller) {
         setAvailableLocations(seller.farms.map(f => ({name: f.name, id: f.id})));
         const exists = seller.farms.some(f => f.name === contract.pickupLocation);
@@ -362,8 +423,16 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
 
   const handleSellerChange = (sellerName: string) => {
     const seller = producersList.find(p => p.name === sellerName);
-    // AUTO LINK BY DOCUMENT
-    setFormData({...formData, sellerName, sellerDoc: seller?.doc, sellerBankDetails: undefined});
+    // AUTO LINK BY ID & DOCUMENT
+    setFormData({
+        ...formData,
+        sellerId: seller?.id,
+        sellerName,
+        sellerDoc: seller?.doc,
+        farmId: undefined,
+        farmName: undefined,
+        sellerBankDetails: undefined
+    });
     
     if (seller) {
         const locations = seller.farms.map(f => ({name: f.name, id: f.id}));
@@ -376,12 +445,27 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
         // Auto select first bank if exists
         const defaultBank = banks.length > 0 ? banks[0] : undefined;
         
-        if (locations.length > 0) {
+        if (locations.length === 1) {
             setFormData(prev => ({
                 ...prev, 
+                sellerId: seller.id,
                 sellerName, 
                 sellerDoc: seller.doc, 
+                farmId: locations[0].id,
+                farmName: locations[0].name,
                 pickupLocation: locations[0].name,
+                sellerBankDetails: defaultBank
+            }));
+            setIsNewLocation(false);
+        } else if (locations.length > 1) {
+            setFormData(prev => ({
+                ...prev,
+                sellerId: seller.id,
+                sellerName,
+                sellerDoc: seller.doc,
+                farmId: undefined,
+                farmName: undefined,
+                pickupLocation: '',
                 sellerBankDetails: defaultBank
             }));
             setIsNewLocation(false);
@@ -389,8 +473,11 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
             setIsNewLocation(true);
             setFormData(prev => ({
                 ...prev, 
+                sellerId: seller.id,
                 sellerName, 
                 sellerDoc: seller.doc, 
+                farmId: undefined,
+                farmName: undefined,
                 pickupLocation: '',
                 sellerBankDetails: defaultBank
             }));
@@ -457,13 +544,21 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
         }
     }
 
+    const matchedSeller = findProducerForContract(formData);
+    const matchedFarm = formData.farmId
+      ? availableLocations.find(f => f.id === formData.farmId)
+      : undefined;
+
     const finalContract: Contract = {
       id: editingContract?.id || Math.random().toString(36).substr(2, 9),
       number: formData.number!,
       product: formData.product as any,
       crop: formData.crop!,
+      sellerId: formData.sellerId || matchedSeller?.id,
       sellerName: formData.sellerName!,
       sellerDoc: formData.sellerDoc, // Saving Doc
+      farmId: formData.farmId || undefined,
+      farmName: matchedFarm?.name || formData.farmName || undefined,
       buyerName: formData.buyerName!,
       buyerDoc: formData.buyerDoc, // Saving Doc
       totalBags: Number(formData.totalBags),
@@ -561,7 +656,48 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
       setReportColumns(prev => ({...prev, [col]: !prev[col]}));
   };
 
-  const getFullSeller = (name: string) => producersList.find(p => p.name === name);
+  const findProducerForContract = (contract: Partial<Contract>): Producer | undefined => {
+      if (contract.sellerId) {
+          const byId = producersList.find(p => p.id === contract.sellerId);
+          if (byId) return byId;
+      }
+      if (contract.sellerDoc) {
+          const byDoc = producersList.find(p => p.doc && p.doc === contract.sellerDoc);
+          if (byDoc) return byDoc;
+      }
+      if (contract.sellerName) {
+          return producersList.find(p => p.name === contract.sellerName);
+      }
+      return undefined;
+  };
+
+  const resolveContractFarm = (contract: Partial<Contract>, seller?: Producer): { id?: string; name?: string } => {
+      if (contract.farmId) {
+          const matchedFarm = seller?.farms?.find(f => f.id === contract.farmId);
+          if (matchedFarm) return { id: matchedFarm.id, name: matchedFarm.name };
+          if (contract.farmName) return { id: contract.farmId, name: contract.farmName };
+      }
+
+      if (contract.farmName) {
+          return { id: contract.farmId, name: contract.farmName };
+      }
+
+      if (seller && seller.farms && seller.farms.length > 0) {
+          if (contract.pickupLocation) {
+              const normalizedPickup = contract.pickupLocation.trim().toLowerCase();
+              const exactMatches = seller.farms.filter(f => f.name.trim().toLowerCase() === normalizedPickup);
+              if (exactMatches.length === 1) {
+                  return { id: exactMatches[0].id, name: exactMatches[0].name };
+              }
+          }
+          if (seller.farms.length === 1) {
+              return { id: seller.farms[0].id, name: seller.farms[0].name };
+          }
+      }
+
+      return {};
+  };
+
   const getFullBuyer = (name: string) => buyersList.find(b => b.name === name);
 
   const formatFortnightDate = (dateStr: string, type: 'START' | 'END'): string => {
@@ -592,12 +728,33 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
 
   // --- RENDERERS FOR PRINTING ---
   
-  const ContractDocument = ({ contract }: { contract: Contract }) => {
-    const seller = getFullSeller(contract.sellerName);
+  const ContractDocument = ({ contract, includeCommission = false }: { contract: Contract; includeCommission?: boolean }) => {
+    const seller = findProducerForContract(contract);
+    const resolvedFarm = resolveContractFarm(contract, seller);
     const buyer = getFullBuyer(contract.buyerName);
 
     // Use stored bank details or fallback to first available from producer
     const bank = contract.sellerBankDetails || (seller?.bankDetails && seller.bankDetails.length > 0 ? seller.bankDetails[0] : undefined);
+
+    const currencySymbol = contract.currency === 'USD' ? 'US$' : 'R$';
+    const hasCommissionPerBag =
+      contract.commissionPerBag !== null &&
+      contract.commissionPerBag !== undefined &&
+      !isNaN(Number(contract.commissionPerBag));
+    const hasTotalBags =
+      contract.totalBags !== null &&
+      contract.totalBags !== undefined &&
+      !isNaN(Number(contract.totalBags));
+    const totalCommission =
+      hasCommissionPerBag && hasTotalBags
+        ? Number(contract.totalBags) * Number(contract.commissionPerBag)
+        : null;
+    const hasCommissionDueDate =
+      Boolean(contract.commissionDueDate) &&
+      !isNaN(new Date(contract.commissionDueDate).getTime());
+    const commissionPaymentCondition = hasCommissionDueDate
+      ? `Vencimento em ${new Date(contract.commissionDueDate).toLocaleDateString('pt-BR', { timeZone: 'UTC' })}`
+      : 'Não informada no contrato';
 
     return (
         <div className="bg-white w-full max-w-[210mm] min-h-[297mm] p-[10mm] mx-auto text-black font-sans text-[11px] leading-tight">
@@ -656,7 +813,7 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
                         <span className="font-bold">Email:</span> <span>{seller?.email || '-'}</span>
                     </div>
                     <div className="grid grid-cols-[80px_1fr_120px_1fr]">
-                        <span className="font-bold">Fazenda:</span> <span className="uppercase">{contract.pickupLocation}</span>
+                        <span className="font-bold">Fazenda:</span> <span className="uppercase">{resolvedFarm.name || '-'}</span>
                         <span className="font-bold text-right pr-2">Insc. Estadual:</span> <span>{seller?.stateInsc}</span>
                     </div>
                 </div>
@@ -723,6 +880,33 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
                         <span className="font-bold text-right pr-2">CPF / CNPJ:</span> <span>{bank?.holderDoc || '-'}</span>
                     </div>
                 </div>
+
+                {includeCommission && (
+                    <>
+                        {/* COMISSÃO DE CORRETAGEM */}
+                        <div className="bg-gray-300 border-b border-black text-center font-bold text-xs py-0.5 uppercase print:bg-gray-300 print:color-adjust-exact">COMISSÃO DE CORRETAGEM</div>
+                        <div className="p-1 border-b border-black text-xs">
+                            <div className="grid grid-cols-3 gap-2">
+                                <div>
+                                    <span className="font-bold">Comissão Unitária:</span>{' '}
+                                    {hasCommissionPerBag
+                                        ? `${currencySymbol} ${Number(contract.commissionPerBag).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} / saca`
+                                        : 'Não informada no contrato'}
+                                </div>
+                                <div>
+                                    <span className="font-bold">Valor Total:</span>{' '}
+                                    {totalCommission !== null
+                                        ? `${currencySymbol} ${totalCommission.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                                        : 'Não disponível (dados insuficientes)'}
+                                </div>
+                                <div>
+                                    <span className="font-bold">Condição de Pagamento:</span>{' '}
+                                    {commissionPaymentCondition}
+                                </div>
+                            </div>
+                        </div>
+                    </>
+                )}
 
                 {/* EMBARQUE PRODUTO */}
                 <div className="bg-gray-300 border-b border-black text-center font-bold text-xs py-0.5 uppercase print:bg-gray-300 print:color-adjust-exact">EMBARQUE PRODUTO</div>
@@ -882,10 +1066,26 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
                                 </span>
                             </td>
                             <td className="px-6 py-4 text-right">
-                                <div className="flex justify-end gap-2">
-                                    <button onClick={() => handlePrintContract(contract)} className="p-1 text-slate-400 hover:text-slate-600" title="Imprimir"><Printer className="w-4 h-4" /></button>
+                                <div className="flex justify-end items-center gap-2">
+                                    <button
+                                        onClick={() => handlePrintContract(contract, false)}
+                                        className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded border border-slate-200 transition-colors whitespace-nowrap"
+                                        title="Imprimir sem Comissão"
+                                    >
+                                        <Printer className="w-3.5 h-3.5" />
+                                        Imprimir sem Comissão
+                                    </button>
+                                    <button
+                                        onClick={() => handlePrintContract(contract, true)}
+                                        className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded border border-emerald-200 transition-colors whitespace-nowrap"
+                                        title="Imprimir com Comissão"
+                                    >
+                                        <Printer className="w-3.5 h-3.5" />
+                                        Imprimir com Comissão
+                                    </button>
                                     <button onClick={() => handleEdit(contract)} className="p-1 text-slate-400 hover:text-emerald-600" title="Editar"><Edit2 className="w-4 h-4" /></button>
                                     <button onClick={() => handleSendLink(contract)} className="p-1 text-slate-400 hover:text-blue-600" title="Enviar Link"><Send className="w-4 h-4" /></button>
+                                    <button onClick={() => handleRequestDelete(contract)} className="p-1 text-slate-400 hover:text-red-600 transition-colors" title="Excluir Contrato"><Trash2 className="w-4 h-4" /></button>
                                 </div>
                             </td>
                         </tr>
@@ -1031,16 +1231,49 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
                                                 value={formData.pickupLocation || ''} 
                                                 onChange={(e) => {
                                                     if(e.target.value === 'NEW') setIsNewLocation(true);
-                                                    else setFormData({...formData, pickupLocation: e.target.value});
+                                                    else {
+                                                        const selectedName = e.target.value;
+                                                        const matched = availableLocations.find(l => l.name === selectedName);
+                                                        setFormData({
+                                                            ...formData,
+                                                            pickupLocation: selectedName,
+                                                            ...(matched ? { farmId: matched.id, farmName: matched.name } : {})
+                                                        });
+                                                    }
                                                 }}
                                             >
                                                 <option value="">Selecione...</option>
-                                                {availableLocations.map(l => <option key={l.id} value={l.name}>{l.name}</option>)}
+                                                {availableLocations.map(l => <option key={l.id || l.name} value={l.name}>{l.name}</option>)}
                                                 <option value="NEW">+ Outro Local</option>
                                             </select>
                                         </div>
                                     )}
                                 </div>
+                                {availableLocations.length > 0 && (
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Fazenda do Produtor</label>
+                                        <select
+                                            className="w-full border border-slate-300 rounded p-2 bg-white"
+                                            value={formData.farmId || ''}
+                                            onChange={(e) => {
+                                                const selectedFarm = availableLocations.find(l => l.id === e.target.value);
+                                                setFormData({
+                                                    ...formData,
+                                                    farmId: selectedFarm?.id || undefined,
+                                                    farmName: selectedFarm?.name || undefined
+                                                });
+                                            }}
+                                        >
+                                            {availableLocations.length > 1 && <option value="">Selecione a fazenda...</option>}
+                                            {availableLocations.map(l => (
+                                                <option key={l.id || l.name} value={l.id || ''}>{l.name}</option>
+                                            ))}
+                                        </select>
+                                        <p className="text-xs text-slate-400 mt-1">
+                                            Exibe somente as fazendas vinculadas ao produtor selecionado.
+                                        </p>
+                                    </div>
+                                )}
                             </div>
                             
                             <hr className="border-slate-100 my-4" />
@@ -1321,9 +1554,16 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
 
       {/* --- PRINT PREVIEW --- */}
       {printData && (
-          <PrintIsolation onClose={() => setPrintData(null)} title={printData.type === 'SINGLE' ? `Contrato ${printData.data.number} - ${printData.data.buyerName} - ${printData.data.sellerName}` : 'Relatório de Contratos'}>
+          <PrintIsolation
+            onClose={() => setPrintData(null)}
+            title={
+              printData.type === 'SINGLE'
+                ? `Contrato ${printData.data.number}${printData.includeCommission ? ' (Com Comissão)' : ''} - ${printData.data.buyerName} - ${printData.data.sellerName}`
+                : 'Relatório de Contratos'
+            }
+          >
               {printData.type === 'SINGLE' ? (
-                  <ContractDocument contract={printData.data} />
+                  <ContractDocument contract={printData.data} includeCommission={Boolean(printData.includeCommission)} />
               ) : (
                   <div className="bg-white p-8 w-[297mm] min-h-[210mm] mx-auto">
                       <div className="flex justify-between items-center mb-6 border-b-2 border-slate-800 pb-4">
@@ -1381,6 +1621,88 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
                   </div>
               )}
           </PrintIsolation>
+      )}
+      {/* --- DELETE CONTRACT MODAL --- */}
+      {deleteTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6">
+            <div className="flex items-start gap-4 mb-5">
+              <div className={`p-2.5 rounded-lg shrink-0 ${deleteBlockReason || deleteCheckFailed ? 'bg-amber-100 text-amber-600' : 'bg-red-100 text-red-600'}`}>
+                {deleteBlockReason || deleteCheckFailed ? <AlertTriangle className="w-5 h-5" /> : <Trash2 className="w-5 h-5" />}
+              </div>
+              <div className="flex-1 min-w-0">
+                {isCheckingDelete ? (
+                  <>
+                    <h3 className="font-bold text-slate-800 mb-1">Verificando contrato {deleteTarget.number}</h3>
+                    <p className="text-sm text-slate-600 flex items-center gap-2">
+                      <span className="inline-block w-3.5 h-3.5 border-2 border-slate-300 border-t-emerald-600 rounded-full animate-spin" />
+                      Verificando embarques e registros vinculados...
+                    </p>
+                  </>
+                ) : deleteBlockReason ? (
+                  <>
+                    <h3 className="font-bold text-slate-800 mb-1">Exclusão bloqueada — Contrato {deleteTarget.number}</h3>
+                    <p className="text-sm text-slate-600">{deleteBlockReason}</p>
+                  </>
+                ) : deleteCheckFailed ? (
+                  <>
+                    <h3 className="font-bold text-slate-800 mb-1">Não foi possível verificar o contrato {deleteTarget.number}</h3>
+                    <p className="text-sm text-red-600">{deleteError}</p>
+                  </>
+                ) : (
+                  <>
+                    <h3 className="font-bold text-slate-800 mb-1">Confirmar exclusão de contrato</h3>
+                    <p className="text-sm text-slate-600">
+                      Deseja excluir o contrato <strong className="font-mono text-slate-800">{deleteTarget.number}</strong> ({deleteTarget.sellerName})?
+                    </p>
+                    <p className="text-xs text-red-600 mt-2 font-medium">
+                      Atenção: esta exclusão é definitiva e removerá o contrato permanentemente do banco de dados.
+                    </p>
+                  </>
+                )}
+              </div>
+            </div>
+
+            {!isCheckingDelete && !deleteBlockReason && !deleteCheckFailed && deleteError && (
+              <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700 font-medium">
+                {deleteError}
+              </div>
+            )}
+
+            <div className="flex justify-end gap-2">
+              {isCheckingDelete || deleteBlockReason || deleteCheckFailed ? (
+                <button
+                  onClick={handleCloseDeleteModal}
+                  className="px-4 py-2 text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg text-sm font-medium transition-colors"
+                >
+                  {isCheckingDelete ? 'Cancelar' : 'Fechar'}
+                </button>
+              ) : (
+                <>
+                  <button
+                    onClick={handleCloseDeleteModal}
+                    disabled={isDeleting}
+                    className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg text-sm font-medium disabled:opacity-50 transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={handleConfirmDelete}
+                    disabled={isDeleting}
+                    className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 text-sm font-medium flex items-center gap-2 disabled:opacity-50 transition-colors"
+                  >
+                    {isDeleting ? (
+                      <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    ) : (
+                      <Trash2 className="w-4 h-4" />
+                    )}
+                    Confirmar exclusão
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

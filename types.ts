@@ -28,8 +28,11 @@ export interface Contract {
   number: string;
   product: 'SOJA' | 'MILHO' | 'TRIGO' | 'SORGO';
   crop: string;
+  sellerId?: string;
   sellerName: string;
   sellerDoc?: string;
+  farmId?: string;
+  farmName?: string;
   buyerName: string;
   buyerDoc?: string;
   totalBags: number;

@@ -39,7 +39,10 @@ const mapContractFromDB = (c: any): Contract => {
     }
     return {
         id: c.id, number: c.number, product: c.product, crop: c.crop,
+        sellerId: c.seller_id ?? undefined,
         sellerName: c.seller_name, sellerDoc: c.seller_doc,
+        farmId: c.farm_id ?? undefined,
+        farmName: c.farm_name ?? undefined,
         buyerName: c.buyer_name, buyerDoc: c.buyer_doc,
         totalBags: c.total_bags, totalTons: c.total_tons, deliveredBags: c.delivered_bags,
         freightType: c.freight_type, pickupLocation: c.pickup_location,
@@ -168,7 +171,10 @@ export const deleteBuyer = async (id: string) => {
 export const saveContract = async (contract: Contract) => {
     const dbContract = {
         number: contract.number, product: contract.product, crop: contract.crop,
+        seller_id: contract.sellerId ?? null,
         seller_name: contract.sellerName, seller_doc: contract.sellerDoc,
+        farm_id: contract.farmId ?? null,
+        farm_name: contract.farmName ?? null,
         buyer_name: contract.buyerName, buyer_doc: contract.buyerDoc,
         total_bags: contract.totalBags, total_tons: contract.totalTons,
         delivered_bags: contract.deliveredBags, freight_type: contract.freightType,
@@ -193,6 +199,104 @@ export const saveContract = async (contract: Contract) => {
     if (error) {
         console.error("Erro Supabase:", error);
         throw new Error(`Erro ao salvar no banco: ${error.message}`);
+    }
+};
+
+export interface ContractDependenciesResult {
+    canDelete: boolean;
+    reason?: string;
+    shipmentsCount: number;
+    promissoryNotesCount: number;
+}
+
+export const checkContractDependencies = async (contractId: string): Promise<ContractDependenciesResult> => {
+    const { data: linkedShipments, error: shipmentsError } = await supabase
+        .from('shipments')
+        .select('id, promissory_note_issued, promissory_note_number')
+        .eq('contract_id', contractId);
+
+    if (shipmentsError) {
+        throw new Error(`Erro ao verificar embarques vinculados: ${shipmentsError.message}`);
+    }
+
+    const { data: contractRow, error: contractError } = await supabase
+        .from('contracts')
+        .select('id, delivered_bags')
+        .eq('id', contractId)
+        .maybeSingle();
+
+    if (contractError) {
+        throw new Error(`Erro ao verificar dados do contrato: ${contractError.message}`);
+    }
+
+    if (!contractRow) {
+        throw new Error('Contrato não encontrado no banco de dados.');
+    }
+
+    const shipmentsCount = linkedShipments?.length || 0;
+    const promissoryNotesCount = (linkedShipments || []).filter(
+        (s: any) => Boolean(s.promissory_note_issued) || Boolean(s.promissory_note_number)
+    ).length;
+
+    if (shipmentsCount > 0 && promissoryNotesCount > 0) {
+        return {
+            canDelete: false,
+            shipmentsCount,
+            promissoryNotesCount,
+            reason: `Este contrato possui ${shipmentsCount} embarque(s) e ${promissoryNotesCount} Nota(s) Promissória(s) vinculada(s). A exclusão foi bloqueada para preservar o histórico logístico e financeiro.`
+        };
+    }
+
+    if (shipmentsCount > 0) {
+        return {
+            canDelete: false,
+            shipmentsCount,
+            promissoryNotesCount,
+            reason: `Este contrato possui ${shipmentsCount} embarque(s) registrado(s) no módulo de Logística. A exclusão foi bloqueada porque registros vinculados não são removidos automaticamente.`
+        };
+    }
+
+    if (Number(contractRow.delivered_bags) > 0) {
+        return {
+            canDelete: false,
+            shipmentsCount: 0,
+            promissoryNotesCount: 0,
+            reason: `Este contrato possui saldo embarcado registrado (${Number(contractRow.delivered_bags).toLocaleString('pt-BR', { maximumFractionDigits: 2 })} sacas) e não pode ser excluído.`
+        };
+    }
+
+    return {
+        canDelete: true,
+        shipmentsCount: 0,
+        promissoryNotesCount: 0
+    };
+};
+
+export const deleteContract = async (contractId: string): Promise<void> => {
+    const deps = await checkContractDependencies(contractId);
+    if (!deps.canDelete) {
+        throw new Error(deps.reason || 'Este contrato possui registros vinculados e não pode ser excluído.');
+    }
+
+    const { data: deletedRows, error } = await supabase
+        .from('contracts')
+        .delete()
+        .eq('id', contractId)
+        .select('id');
+
+    if (error) {
+        console.error('Erro Supabase ao excluir contrato:', error);
+        if (error.code === '23503') {
+            throw new Error('Exclusão bloqueada: existem outros registros vinculados a este contrato no banco de dados.');
+        }
+        if (error.code === '42501' || /row-level security|permission denied/i.test(error.message)) {
+            throw new Error('Permissão negada pelas políticas de segurança (RLS) do Supabase para excluir este contrato.');
+        }
+        throw new Error(`Erro ao excluir contrato no banco de dados: ${error.message}`);
+    }
+
+    if (!deletedRows || deletedRows.length === 0) {
+        throw new Error('O contrato não pôde ser excluído. Verifique se ele ainda existe ou se as políticas de segurança (RLS) do Supabase permitem a exclusão.');
     }
 };
 
