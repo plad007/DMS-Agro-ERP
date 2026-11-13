@@ -200,6 +200,98 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
     loadAuxData();
   }, []);
 
+  const normalizeDoc = (doc?: string) => (doc || '').replace(/\D/g, '');
+  const normalizeName = (name?: string) => (name || '').trim().toLowerCase();
+
+  const findProducerForContract = (contract: Partial<Contract>): Producer | undefined => {
+      if (contract.sellerId) {
+          const byId = producersList.find(p => p.id === contract.sellerId);
+          if (byId) return byId;
+      }
+      const contractDoc = normalizeDoc(contract.sellerDoc);
+      if (contractDoc) {
+          const byDoc = producersList.find(p => normalizeDoc(p.doc) === contractDoc);
+          if (byDoc) return byDoc;
+      }
+      const contractName = normalizeName(contract.sellerName);
+      if (contractName) {
+          return producersList.find(p => normalizeName(p.name) === contractName);
+      }
+      return undefined;
+  };
+
+  const resolveContractFarm = (contract: Partial<Contract>, seller?: Producer): { id?: string; name?: string } => {
+      if (contract.farmId) {
+          const matchedFarm = seller?.farms?.find(f => f.id === contract.farmId);
+          if (matchedFarm) return { id: matchedFarm.id, name: matchedFarm.name };
+          if (contract.farmName) return { id: contract.farmId, name: contract.farmName };
+      }
+
+      if (contract.farmName) {
+          const normalizedFarmName = normalizeName(contract.farmName);
+          const matchedByName = seller?.farms?.filter(f => normalizeName(f.name) === normalizedFarmName) || [];
+          if (matchedByName.length === 1) {
+              return { id: matchedByName[0].id, name: matchedByName[0].name };
+          }
+          return { id: contract.farmId, name: contract.farmName };
+      }
+
+      if (seller && seller.farms && seller.farms.length > 0) {
+          if (contract.pickupLocation) {
+              const normalizedPickup = normalizeName(contract.pickupLocation);
+              const exactMatches = seller.farms.filter(f => normalizeName(f.name) === normalizedPickup);
+              if (exactMatches.length === 1) {
+                  return { id: exactMatches[0].id, name: exactMatches[0].name };
+              }
+          }
+          if (seller.farms.length === 1) {
+              return { id: seller.farms[0].id, name: seller.farms[0].name };
+          }
+      }
+
+      return {};
+  };
+
+  const selectedProducerForForm = useMemo(
+    () => findProducerForContract(formData),
+    [producersList, formData.sellerId, formData.sellerDoc, formData.sellerName]
+  );
+
+  const producerFarmsForForm = useMemo(
+    () => selectedProducerForForm?.farms || [],
+    [selectedProducerForForm]
+  );
+
+  useEffect(() => {
+    if (!isModalOpen || !editingContract || producersList.length === 0) return;
+    const seller = findProducerForContract(editingContract);
+    if (!seller) return;
+
+    const farms = (seller.farms || []).map(f => ({ name: f.name, id: f.id }));
+    setAvailableLocations(farms);
+    setIsNewLocation(!seller.farms.some(f => normalizeName(f.name) === normalizeName(editingContract.pickupLocation)));
+
+    let accounts = seller.bankDetails || [];
+    if (editingContract.sellerBankDetails) {
+      const isAccountPresent = accounts.some(acc =>
+        acc.bankName === editingContract.sellerBankDetails?.bankName &&
+        acc.account === editingContract.sellerBankDetails?.account
+      );
+      if (!isAccountPresent) {
+        accounts = [editingContract.sellerBankDetails, ...accounts];
+      }
+    }
+    setAvailableAccounts(accounts);
+
+    const resolvedFarm = resolveContractFarm(editingContract, seller);
+    setFormData(prev => ({
+      ...prev,
+      sellerId: prev.sellerId || seller.id,
+      farmId: prev.farmId ?? resolvedFarm.id,
+      farmName: prev.farmName ?? resolvedFarm.name,
+    }));
+  }, [isModalOpen, editingContract, producersList]);
+
   // Update underlying dates when UI selectors change
   useEffect(() => {
     if (!isModalOpen) return;
@@ -333,7 +425,7 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
 
     if(seller) {
         setAvailableLocations(seller.farms.map(f => ({name: f.name, id: f.id})));
-        const exists = seller.farms.some(f => f.name === contract.pickupLocation);
+        const exists = seller.farms.some(f => normalizeName(f.name) === normalizeName(contract.pickupLocation));
         setIsNewLocation(!exists);
         
         // --- LOGIC TO RESTORE SAVED BANK ACCOUNT IN EDIT MODE ---
@@ -422,7 +514,8 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
   };
 
   const handleSellerChange = (sellerName: string) => {
-    const seller = producersList.find(p => p.name === sellerName);
+    const normalizedInput = normalizeName(sellerName);
+    const seller = producersList.find(p => normalizeName(p.name) === normalizedInput);
     // AUTO LINK BY ID & DOCUMENT
     setFormData({
         ...formData,
@@ -435,7 +528,7 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
     });
     
     if (seller) {
-        const locations = seller.farms.map(f => ({name: f.name, id: f.id}));
+        const locations = (seller.farms || []).map(f => ({name: f.name, id: f.id}));
         setAvailableLocations(locations);
         
         // Load Banks
@@ -449,11 +542,11 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
             setFormData(prev => ({
                 ...prev, 
                 sellerId: seller.id,
-                sellerName, 
+                sellerName: seller.name, 
                 sellerDoc: seller.doc, 
                 farmId: locations[0].id,
                 farmName: locations[0].name,
-                pickupLocation: locations[0].name,
+                pickupLocation: prev.pickupLocation || (!editingContract ? locations[0].name : ''),
                 sellerBankDetails: defaultBank
             }));
             setIsNewLocation(false);
@@ -461,11 +554,11 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
             setFormData(prev => ({
                 ...prev,
                 sellerId: seller.id,
-                sellerName,
+                sellerName: seller.name,
                 sellerDoc: seller.doc,
                 farmId: undefined,
                 farmName: undefined,
-                pickupLocation: '',
+                pickupLocation: editingContract ? prev.pickupLocation : '',
                 sellerBankDetails: defaultBank
             }));
             setIsNewLocation(false);
@@ -474,11 +567,11 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
             setFormData(prev => ({
                 ...prev, 
                 sellerId: seller.id,
-                sellerName, 
+                sellerName: seller.name, 
                 sellerDoc: seller.doc, 
                 farmId: undefined,
                 farmName: undefined,
-                pickupLocation: '',
+                pickupLocation: editingContract ? prev.pickupLocation : '',
                 sellerBankDetails: defaultBank
             }));
         }
@@ -546,7 +639,7 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
 
     const matchedSeller = findProducerForContract(formData);
     const matchedFarm = formData.farmId
-      ? availableLocations.find(f => f.id === formData.farmId)
+      ? (matchedSeller?.farms || []).find(f => f.id === formData.farmId)
       : undefined;
 
     const finalContract: Contract = {
@@ -654,48 +747,6 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
 
   const toggleReportColumn = (col: keyof typeof reportColumns) => {
       setReportColumns(prev => ({...prev, [col]: !prev[col]}));
-  };
-
-  const findProducerForContract = (contract: Partial<Contract>): Producer | undefined => {
-      if (contract.sellerId) {
-          const byId = producersList.find(p => p.id === contract.sellerId);
-          if (byId) return byId;
-      }
-      if (contract.sellerDoc) {
-          const byDoc = producersList.find(p => p.doc && p.doc === contract.sellerDoc);
-          if (byDoc) return byDoc;
-      }
-      if (contract.sellerName) {
-          return producersList.find(p => p.name === contract.sellerName);
-      }
-      return undefined;
-  };
-
-  const resolveContractFarm = (contract: Partial<Contract>, seller?: Producer): { id?: string; name?: string } => {
-      if (contract.farmId) {
-          const matchedFarm = seller?.farms?.find(f => f.id === contract.farmId);
-          if (matchedFarm) return { id: matchedFarm.id, name: matchedFarm.name };
-          if (contract.farmName) return { id: contract.farmId, name: contract.farmName };
-      }
-
-      if (contract.farmName) {
-          return { id: contract.farmId, name: contract.farmName };
-      }
-
-      if (seller && seller.farms && seller.farms.length > 0) {
-          if (contract.pickupLocation) {
-              const normalizedPickup = contract.pickupLocation.trim().toLowerCase();
-              const exactMatches = seller.farms.filter(f => f.name.trim().toLowerCase() === normalizedPickup);
-              if (exactMatches.length === 1) {
-                  return { id: exactMatches[0].id, name: exactMatches[0].name };
-              }
-          }
-          if (seller.farms.length === 1) {
-              return { id: seller.farms[0].id, name: seller.farms[0].name };
-          }
-      }
-
-      return {};
   };
 
   const getFullBuyer = (name: string) => buyersList.find(b => b.name === name);
@@ -1189,6 +1240,67 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
                                      {formData.buyerDoc && <p className="text-xs text-slate-400 mt-1">CNPJ: {formData.buyerDoc}</p>}
                                 </div>
                            </div>
+
+                           <div className="mt-4 pt-4 border-t border-slate-100 grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Fazenda do Produtor</label>
+                                    <select
+                                        className="w-full border border-slate-300 rounded p-2 bg-white disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed"
+                                        disabled={!selectedProducerForForm || producerFarmsForForm.length === 0}
+                                        value={
+                                            formData.farmId && producerFarmsForForm.some(f => f.id === formData.farmId)
+                                                ? formData.farmId
+                                                : formData.farmName
+                                                ? '__LEGACY_FARM__'
+                                                : ''
+                                        }
+                                        onChange={(e) => {
+                                            const selectedVal = e.target.value;
+                                            if (selectedVal === '__LEGACY_FARM__') return;
+                                            const selectedFarm = producerFarmsForForm.find(f => f.id === selectedVal);
+                                            setFormData(prev => ({
+                                                ...prev,
+                                                farmId: selectedFarm?.id || undefined,
+                                                farmName: selectedFarm?.name || undefined
+                                            }));
+                                        }}
+                                    >
+                                        {!selectedProducerForForm ? (
+                                            <option value="">Selecione primeiro o vendedor (produtor)...</option>
+                                        ) : producerFarmsForForm.length === 0 ? (
+                                            <option value="">Nenhuma fazenda cadastrada para este produtor</option>
+                                        ) : (
+                                            <>
+                                                {(!formData.farmId || producerFarmsForForm.length > 1) && (
+                                                    <option value="">Selecione a fazenda...</option>
+                                                )}
+                                                {!formData.farmId && formData.farmName && (
+                                                    <option value="__LEGACY_FARM__">{formData.farmName} (salva no contrato)</option>
+                                                )}
+                                                {formData.farmId && formData.farmName && !producerFarmsForForm.some(f => f.id === formData.farmId) && (
+                                                    <option value="__LEGACY_FARM__">{formData.farmName} (salva no contrato)</option>
+                                                )}
+                                                {producerFarmsForForm.map(f => (
+                                                    <option key={f.id} value={f.id}>{f.name}</option>
+                                                ))}
+                                            </>
+                                        )}
+                                    </select>
+                                    {!selectedProducerForForm ? (
+                                        <p className="text-xs text-slate-400 mt-1">
+                                            Selecione um produtor cadastrado para listar as fazendas vinculadas.
+                                        </p>
+                                    ) : producerFarmsForForm.length === 0 ? (
+                                        <p className="text-xs text-amber-600 mt-1">
+                                            Este produtor não possui fazendas cadastradas em Cadastros → Produtores.
+                                        </p>
+                                    ) : (
+                                        <p className="text-xs text-slate-400 mt-1">
+                                            Exibe somente as fazendas vinculadas ao produtor selecionado (independente do local de embarque).
+                                        </p>
+                                    )}
+                                </div>
+                           </div>
                       </div>
 
                       {/* Section 3: Logistics */}
@@ -1231,15 +1343,7 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
                                                 value={formData.pickupLocation || ''} 
                                                 onChange={(e) => {
                                                     if(e.target.value === 'NEW') setIsNewLocation(true);
-                                                    else {
-                                                        const selectedName = e.target.value;
-                                                        const matched = availableLocations.find(l => l.name === selectedName);
-                                                        setFormData({
-                                                            ...formData,
-                                                            pickupLocation: selectedName,
-                                                            ...(matched ? { farmId: matched.id, farmName: matched.name } : {})
-                                                        });
-                                                    }
+                                                    else setFormData({...formData, pickupLocation: e.target.value});
                                                 }}
                                             >
                                                 <option value="">Selecione...</option>
@@ -1249,31 +1353,6 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
                                         </div>
                                     )}
                                 </div>
-                                {availableLocations.length > 0 && (
-                                    <div>
-                                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Fazenda do Produtor</label>
-                                        <select
-                                            className="w-full border border-slate-300 rounded p-2 bg-white"
-                                            value={formData.farmId || ''}
-                                            onChange={(e) => {
-                                                const selectedFarm = availableLocations.find(l => l.id === e.target.value);
-                                                setFormData({
-                                                    ...formData,
-                                                    farmId: selectedFarm?.id || undefined,
-                                                    farmName: selectedFarm?.name || undefined
-                                                });
-                                            }}
-                                        >
-                                            {availableLocations.length > 1 && <option value="">Selecione a fazenda...</option>}
-                                            {availableLocations.map(l => (
-                                                <option key={l.id || l.name} value={l.id || ''}>{l.name}</option>
-                                            ))}
-                                        </select>
-                                        <p className="text-xs text-slate-400 mt-1">
-                                            Exibe somente as fazendas vinculadas ao produtor selecionado.
-                                        </p>
-                                    </div>
-                                )}
                             </div>
                             
                             <hr className="border-slate-100 my-4" />
