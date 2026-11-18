@@ -16,8 +16,7 @@ import {
   Search,
   Columns,
   ArrowUpDown,
-  Info,
-  AlertCircle
+  Info
 } from 'lucide-react';
 import {
   CommissionAnalyticsResult,
@@ -47,9 +46,6 @@ interface CommissionReportTabProps {
 const formatBRL = (v: number) =>
   `R$ ${v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-const formatUSD = (v: number) =>
-  `US$ ${v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-
 const ANALYTICAL_COL_OPTIONS: Array<{ key: string; label: string; defaultOn: boolean }> = [
   { key: 'contractNumber', label: 'Contrato', defaultOn: true },
   { key: 'producerName', label: 'Produtor / Vendedor', defaultOn: true },
@@ -59,9 +55,10 @@ const ANALYTICAL_COL_OPTIONS: Array<{ key: string; label: string; defaultOn: boo
   { key: 'closingDate', label: 'Fechamento', defaultOn: true },
   { key: 'totalBags', label: 'Vol. Contratado (scs)', defaultOn: true },
   { key: 'shippedBags', label: 'Vol. Embarcado (scs)', defaultOn: false },
-  { key: 'commissionPerBag', label: 'Comissão Unit.', defaultOn: true },
-  { key: 'contractedCommission', label: 'Comissão Contratada', defaultOn: true },
-  { key: 'shippedCommission', label: 'Prop. Embarque', defaultOn: false },
+  { key: 'commissionPerBag', label: 'Comissão (R$/sc)', defaultOn: true },
+  { key: 'contractedCommission', label: 'Comissão Total (R$)', defaultOn: true },
+  { key: 'shippedCommission', label: 'Prop. Embarque (R$)', defaultOn: false },
+  { key: 'contractCurrency', label: 'Moeda Mercadoria', defaultOn: false },
   { key: 'dueDate', label: 'Previsão Receb.', defaultOn: true },
   { key: 'financialStatus', label: 'Status / Origem', defaultOn: true },
   { key: 'effectiveReceiptDate', label: 'Recebimento Efetivo', defaultOn: false }
@@ -75,11 +72,8 @@ export const CommissionReportTab: React.FC<CommissionReportTabProps> = ({
   onOpenPrint
 }) => {
   const [subView, setSubView] = useState<'OVERVIEW' | 'SYNTHETIC' | 'MATRIX' | 'ANALYTICAL'>('OVERVIEW');
-  const [chartCurrency, setChartCurrency] = useState<'BRL' | 'USD'>('BRL');
-  const [matrixCurrency, setMatrixCurrency] = useState<'BRL' | 'USD'>('BRL');
   const [matrixRowDim, setMatrixRowDim] = useState<CommissionMatrixData['rowDimension']>('PRODUCER');
   const [syntheticGroupBy, setSyntheticGroupBy] = useState<'MONTH' | 'PRODUCER' | 'PRODUCER_MONTH' | 'PRODUCT' | 'CROP'>('PRODUCER');
-  const [convertUsdToBrl, setConvertUsdToBrl] = useState(false);
 
   // Analytical state
   const [searchTerm, setSearchTerm] = useState('');
@@ -95,31 +89,7 @@ export const CommissionReportTab: React.FC<CommissionReportTabProps> = ({
 
   const matrix = useMemo(() => buildMatrix(matrixRowDim), [buildMatrix, matrixRowDim]);
 
-  // Explicit conversion preview (only when exchangeRate > 0)
-  const conversionStats = useMemo(() => {
-    let convertedUsdToBrl = 0;
-    let usdSkippedZeroRate = 0;
-    let usdSkippedCount = 0;
-
-    for (const r of analytics.rows) {
-      if (r.currency === 'USD') {
-        if (r.exchangeRate > 0) {
-          convertedUsdToBrl += r.contractedCommission * r.exchangeRate;
-        } else {
-          usdSkippedZeroRate += r.contractedCommission;
-          usdSkippedCount += 1;
-        }
-      }
-    }
-    return {
-      totalBrlWithValidUsd: analytics.contractedByCurrency.BRL + convertedUsdToBrl,
-      convertedUsdToBrl,
-      usdSkippedZeroRate,
-      usdSkippedCount
-    };
-  }, [analytics.rows, analytics.contractedByCurrency.BRL]);
-
-  // Producer x Month synthetic grouping
+  // Producer x Month synthetic grouping (sempre consolidado em BRL)
   const producerByMonthRows = useMemo(() => {
     const map = new Map<
       string,
@@ -130,7 +100,6 @@ export const CommissionReportTab: React.FC<CommissionReportTabProps> = ({
         monthLabel: string;
         contractsCount: number;
         brl: number;
-        usd: number;
         contractIds: string[];
       }
     >();
@@ -146,15 +115,13 @@ export const CommissionReportTab: React.FC<CommissionReportTabProps> = ({
           monthLabel: mk === '__UNDEFINED__' ? 'Sem vencimento' : formatMonthLabel(mk),
           contractsCount: 0,
           brl: 0,
-          usd: 0,
           contractIds: []
         };
         if (!existing.contractIds.includes(r.contractId)) {
           existing.contractsCount += 1;
           existing.contractIds.push(r.contractId);
         }
-        if (r.currency === 'USD') existing.usd += sl.amount;
-        else existing.brl += sl.amount;
+        existing.brl += sl.amount;
         map.set(key, existing);
       }
     }
@@ -163,7 +130,7 @@ export const CommissionReportTab: React.FC<CommissionReportTabProps> = ({
       if (a.monthKey === '__UNDEFINED__' && b.monthKey !== '__UNDEFINED__') return 1;
       if (b.monthKey === '__UNDEFINED__' && a.monthKey !== '__UNDEFINED__') return -1;
       const cmp = b.monthKey.localeCompare(a.monthKey);
-      return cmp !== 0 ? cmp : b.brl + b.usd - (a.brl + a.usd);
+      return cmp !== 0 ? cmp : b.brl - a.brl;
     });
   }, [analytics.rows]);
 
@@ -224,7 +191,7 @@ export const CommissionReportTab: React.FC<CommissionReportTabProps> = ({
       const target = sheets[0];
       if (!target) return;
       downloadCsvFile(`DMS_Comissoes_${mode}`, target.headers, target.rows, [
-        'DMS Agro — Relatório de Comissões (Pagador exclusivo: Vendedor/Produtor)',
+        'DMS Agro — Relatório de Comissões (Pagador exclusivo: Vendedor/Produtor · Valores sempre em BRL / R$)',
         `Filtros: ${filtersSummary.length > 0 ? filtersSummary.join(' | ') : 'Sem restrição'}`
       ]);
     } else {
@@ -234,6 +201,7 @@ export const CommissionReportTab: React.FC<CommissionReportTabProps> = ({
         [
           ['Relatório', 'Comissões de Corretagem — DMS Agro ERP'],
           ['Regra de Pagador', 'Sempre o Vendedor / Produtor'],
+          ['Moeda da Comissão', 'Sempre Reais (BRL), sem conversão cambial'],
           ['Controle de Recebimentos', 'Recebimentos efetivos ainda não controlados'],
           ['Filtros Aplicados', filtersSummary.length > 0 ? filtersSummary.join(' | ') : 'Todos os registros']
         ]
@@ -251,10 +219,12 @@ export const CommissionReportTab: React.FC<CommissionReportTabProps> = ({
             <p>
               <strong className="text-slate-900">Responsável pelo pagamento:</strong> sempre o Vendedor/Produtor
               <span className="text-slate-400"> · </span>
-              <strong className="text-slate-900">Recebimentos efetivos:</strong> ainda não controlados neste ERP (nenhum valor pago ou vencido é simulado).
+              <strong className="text-slate-900">Moeda da comissão:</strong> sempre Reais (R$), sem conversão cambial (inclusive em contratos negociados em USD)
+              <span className="text-slate-400"> · </span>
+              <strong className="text-slate-900">Recebimentos:</strong> ainda não controlados.
             </p>
             <p className="text-[11px] text-slate-500">
-              Separamos rigorosamente valores em BRL e USD e distinguimos previsão confirmada (vencimento registrado) de estimativa legada/por embarque.
+              Cálculo definitivo: Comissão Total (R$) = Volume contratado em sacas × Valor unitário (R$/sc). Previsões distinguem vencimento confirmado de estimativa legada/por embarque.
             </p>
           </div>
         </div>
@@ -291,32 +261,27 @@ export const CommissionReportTab: React.FC<CommissionReportTabProps> = ({
         </div>
       </div>
 
-      {/* KPI Cards (BRL & USD separated + Honest Receipt Card) */}
+      {/* KPI Cards (Strictly consolidated in BRL) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4 tabular-nums">
         <div className="bg-white border border-slate-200 rounded-xl p-4">
           <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-            Comissão Contratada
+            Comissão Contratada (R$)
           </p>
-          <p className="text-lg font-bold text-slate-900 mt-1">{formatBRL(analytics.contractedByCurrency.BRL)}</p>
-          <p className="text-sm font-semibold text-blue-700 mt-0.5">{formatUSD(analytics.contractedByCurrency.USD)}</p>
-          <p className="text-[11px] text-slate-500 mt-1.5">
+          <p className="text-xl font-bold text-slate-900 mt-1">{formatBRL(analytics.totalContractedBRL)}</p>
+          <p className="text-[11px] text-slate-500 mt-2">
             {analytics.contractsCount} contratos · {analytics.totalBags.toLocaleString('pt-BR')} scs
           </p>
         </div>
 
         <div className="bg-white border border-slate-200 rounded-xl p-4">
           <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-            Prevista no Período
+            Prevista no Período (R$)
           </p>
-          <p className="text-lg font-bold text-emerald-700 mt-1">
-            {formatBRL(analytics.forecastTotalPeriodByCurrency.BRL)}
+          <p className="text-xl font-bold text-emerald-700 mt-1">
+            {formatBRL(analytics.forecastTotalPeriodBRL)}
           </p>
-          <p className="text-sm font-semibold text-blue-700 mt-0.5">
-            {formatUSD(analytics.forecastTotalPeriodByCurrency.USD)}
-          </p>
-          <p className="text-[11px] text-slate-500 mt-1.5">
-            Conf.: {formatBRL(analytics.forecastConfirmedByCurrency.BRL)} · Est.:{' '}
-            {formatBRL(analytics.forecastEstimatedByCurrency.BRL)}
+          <p className="text-[11px] text-slate-500 mt-2">
+            Conf.: {formatBRL(analytics.forecastConfirmedBRL)} · Est.: {formatBRL(analytics.forecastEstimatedBRL)}
           </p>
         </div>
 
@@ -324,13 +289,10 @@ export const CommissionReportTab: React.FC<CommissionReportTabProps> = ({
           <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
             Sem Vencimento Definido
           </p>
-          <p className="text-lg font-bold text-amber-700 mt-1">
-            {formatBRL(analytics.undefinedDueByCurrency.BRL)}
+          <p className="text-xl font-bold text-amber-700 mt-1">
+            {formatBRL(analytics.undefinedDueBRL)}
           </p>
-          <p className="text-sm font-semibold text-blue-700 mt-0.5">
-            {formatUSD(analytics.undefinedDueByCurrency.USD)}
-          </p>
-          <p className="text-[11px] text-slate-500 mt-1.5">
+          <p className="text-[11px] text-slate-500 mt-2">
             Aguardando embarque ou data de pgto
           </p>
         </div>
@@ -339,18 +301,13 @@ export const CommissionReportTab: React.FC<CommissionReportTabProps> = ({
           <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
             Média / sc &amp; Prop. Embarque
           </p>
-          <p className="text-base font-bold text-slate-900 mt-1">
-            {analytics.weightedAvgPerBagByCurrency.BRL !== null
-              ? `${formatBRL(analytics.weightedAvgPerBagByCurrency.BRL)}/sc`
-              : 'BRL: -'}
+          <p className="text-lg font-bold text-slate-900 mt-1">
+            {analytics.weightedAvgPerBagBRL !== null
+              ? `${formatBRL(analytics.weightedAvgPerBagBRL)}/sc`
+              : '-'}
           </p>
-          <p className="text-xs font-semibold text-blue-700 mt-0.5">
-            {analytics.weightedAvgPerBagByCurrency.USD !== null
-              ? `${formatUSD(analytics.weightedAvgPerBagByCurrency.USD)}/sc`
-              : 'USD: -'}
-          </p>
-          <p className="text-[11px] text-slate-500 mt-1.5">
-            Prop. embarque: {formatBRL(analytics.shippedByCurrency.BRL)}
+          <p className="text-[11px] text-slate-500 mt-2">
+            Prop. embarque: {formatBRL(analytics.totalShippedBRL)}
           </p>
         </div>
 
@@ -366,34 +323,6 @@ export const CommissionReportTab: React.FC<CommissionReportTabProps> = ({
           </p>
         </div>
       </div>
-
-      {/* Optional USD Conversion Strip */}
-      {analytics.contractedByCurrency.USD > 0 && (
-        <div className="bg-white border border-slate-200 rounded-xl px-4 py-3 flex flex-wrap items-center justify-between gap-3 text-xs">
-          <label className="flex items-center gap-2 cursor-pointer font-medium text-slate-700">
-            <input
-              type="checkbox"
-              checked={convertUsdToBrl}
-              onChange={(e) => setConvertUsdToBrl(e.target.checked)}
-              className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
-            />
-            Exibir estimativa convertida para BRL usando exclusivamente contratos USD com taxa de câmbio válida (&gt; 0)
-          </label>
-          {convertUsdToBrl && (
-            <div className="flex flex-wrap items-center gap-3 tabular-nums">
-              <span className="font-semibold text-slate-900">
-                Consolidado BRL (BRL + USD convertido): {formatBRL(conversionStats.totalBrlWithValidUsd)}
-              </span>
-              {conversionStats.usdSkippedCount > 0 && (
-                <span className="text-amber-700 flex items-center gap-1">
-                  <AlertCircle className="w-3.5 h-3.5" />
-                  {conversionStats.usdSkippedCount} contrato(s) USD sem câmbio ({formatUSD(conversionStats.usdSkippedZeroRate)}) mantidos separados
-                </span>
-              )}
-            </div>
-          )}
-        </div>
-      )}
 
       {/* Sub-view Switcher */}
       <div className="bg-white border border-slate-200 rounded-xl p-1.5 flex flex-wrap gap-1 w-fit">
@@ -424,31 +353,13 @@ export const CommissionReportTab: React.FC<CommissionReportTabProps> = ({
       {subView === 'OVERVIEW' && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 bg-white border border-slate-200 rounded-xl p-5">
-            <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-              <div>
-                <h3 className="text-sm font-bold text-slate-900">
-                  Previsão Mensal de Recebimento de Comissões ({chartCurrency})
-                </h3>
-                <p className="text-xs text-slate-500">
-                  Separação entre previsão confirmada e estimada. Clique em uma barra para listar contratos.
-                </p>
-              </div>
-              <div className="flex border border-slate-200 rounded-lg overflow-hidden text-xs font-semibold">
-                <button
-                  type="button"
-                  onClick={() => setChartCurrency('BRL')}
-                  className={`px-3 py-1 ${chartCurrency === 'BRL' ? 'bg-slate-900 text-white' : 'bg-white text-slate-600'}`}
-                >
-                  BRL (R$)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setChartCurrency('USD')}
-                  className={`px-3 py-1 ${chartCurrency === 'USD' ? 'bg-blue-700 text-white' : 'bg-white text-slate-600'}`}
-                >
-                  USD (US$)
-                </button>
-              </div>
+            <div className="mb-4">
+              <h3 className="text-sm font-bold text-slate-900">
+                Previsão Mensal de Recebimento de Comissões (R$)
+              </h3>
+              <p className="text-xs text-slate-500">
+                Separação entre previsão confirmada e estimada (todos os contratos consolidados em BRL). Clique em uma barra para listar contratos.
+              </p>
             </div>
 
             <div className="h-[340px]">
@@ -472,26 +383,24 @@ export const CommissionReportTab: React.FC<CommissionReportTabProps> = ({
                   <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#475569' }} />
                   <YAxis
                     tick={{ fontSize: 11, fill: '#475569' }}
-                    tickFormatter={(v) => `${chartCurrency === 'USD' ? 'US$' : 'R$'}${(v / 1000).toFixed(0)}k`}
+                    tickFormatter={(v) => `R$${(v / 1000).toFixed(0)}k`}
                   />
                   <Tooltip
-                    formatter={(val: number) =>
-                      chartCurrency === 'USD' ? formatUSD(val) : formatBRL(val)
-                    }
+                    formatter={(val: number) => formatBRL(val)}
                     contentStyle={{ borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '12px' }}
                   />
                   <Legend wrapperStyle={{ fontSize: '12px' }} />
                   <Bar
-                    dataKey={chartCurrency === 'USD' ? 'confirmedUSD' : 'confirmedBRL'}
-                    name="Previsto Confirmado"
+                    dataKey="confirmedBRL"
+                    name="Previsto Confirmado (R$)"
                     stackId="a"
                     fill="#059669"
                     radius={[0, 0, 0, 0]}
                     className="cursor-pointer"
                   />
                   <Bar
-                    dataKey={chartCurrency === 'USD' ? 'estimatedUSD' : 'estimatedBRL'}
-                    name="Previsto Estimado (Legado / Embarque)"
+                    dataKey="estimatedBRL"
+                    name="Previsto Estimado (R$)"
                     stackId="a"
                     fill="#3b82f6"
                     radius={[4, 4, 0, 0]}
@@ -503,7 +412,7 @@ export const CommissionReportTab: React.FC<CommissionReportTabProps> = ({
           </div>
 
           <div className="bg-white border border-slate-200 rounded-xl p-5">
-            <h3 className="text-sm font-bold text-slate-900 mb-1">Top Produtores em Comissão</h3>
+            <h3 className="text-sm font-bold text-slate-900 mb-1">Top Produtores em Comissão (R$)</h3>
             <p className="text-xs text-slate-500 mb-4">Clique no produtor para abrir seus contratos.</p>
             <div className="divide-y divide-slate-100 max-h-[340px] overflow-y-auto tabular-nums">
               {analytics.summaryByProducer.slice(0, 12).map((p) => (
@@ -526,12 +435,7 @@ export const CommissionReportTab: React.FC<CommissionReportTabProps> = ({
                     </span>
                   </span>
                   <span className="text-right shrink-0">
-                    {p.totalBRL > 0 && (
-                      <span className="block text-xs font-bold text-slate-900">{formatBRL(p.totalBRL)}</span>
-                    )}
-                    {p.totalUSD > 0 && (
-                      <span className="block text-[11px] font-semibold text-blue-700">{formatUSD(p.totalUSD)}</span>
-                    )}
+                    <span className="block text-xs font-bold text-slate-900">{formatBRL(p.totalBRL)}</span>
                   </span>
                 </button>
               ))}
@@ -547,7 +451,7 @@ export const CommissionReportTab: React.FC<CommissionReportTabProps> = ({
       {subView === 'SYNTHETIC' && (
         <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
           <div className="px-5 py-3.5 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3 bg-slate-50">
-            <h3 className="text-sm font-bold text-slate-900">Agrupamento Sintético</h3>
+            <h3 className="text-sm font-bold text-slate-900">Agrupamento Sintético (Valores em R$)</h3>
             <div className="flex flex-wrap gap-1.5">
               {(
                 [
@@ -583,10 +487,10 @@ export const CommissionReportTab: React.FC<CommissionReportTabProps> = ({
                     <th className="py-2.5 px-3 font-semibold">CPF/CNPJ</th>
                     <th className="py-2.5 px-3 font-semibold text-right">Contratos</th>
                     <th className="py-2.5 px-3 font-semibold text-right">Volume (scs)</th>
-                    <th className="py-2.5 px-3 font-semibold text-right">Contratada BRL</th>
-                    <th className="py-2.5 px-3 font-semibold text-right">Confirmada BRL</th>
-                    <th className="py-2.5 px-3 font-semibold text-right">Estimada BRL</th>
-                    <th className="py-2.5 px-4 font-semibold text-right">Contratada USD</th>
+                    <th className="py-2.5 px-3 font-semibold text-right">Contratada (R$)</th>
+                    <th className="py-2.5 px-3 font-semibold text-right">Confirmada (R$)</th>
+                    <th className="py-2.5 px-3 font-semibold text-right">Estimada (R$)</th>
+                    <th className="py-2.5 px-4 font-semibold text-right">Sem Venc. (R$)</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -605,7 +509,7 @@ export const CommissionReportTab: React.FC<CommissionReportTabProps> = ({
                       <td className="py-2.5 px-3 text-right font-semibold text-slate-900">{formatBRL(p.totalBRL)}</td>
                       <td className="py-2.5 px-3 text-right text-emerald-700">{formatBRL(p.confirmedBRL)}</td>
                       <td className="py-2.5 px-3 text-right text-blue-700">{formatBRL(p.estimatedBRL)}</td>
-                      <td className="py-2.5 px-4 text-right font-semibold text-blue-700">{formatUSD(p.totalUSD)}</td>
+                      <td className="py-2.5 px-4 text-right text-amber-700">{formatBRL(p.undefinedBRL)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -619,10 +523,9 @@ export const CommissionReportTab: React.FC<CommissionReportTabProps> = ({
                     <th className="py-2.5 px-4 font-semibold">Mês/Ano</th>
                     <th className="py-2.5 px-3 font-semibold text-right">Contratos</th>
                     <th className="py-2.5 px-3 font-semibold text-right">Volume Base (scs)</th>
-                    <th className="py-2.5 px-3 font-semibold text-right">Confirmada BRL</th>
-                    <th className="py-2.5 px-3 font-semibold text-right">Estimada BRL</th>
-                    <th className="py-2.5 px-3 font-semibold text-right">Total Previsto BRL</th>
-                    <th className="py-2.5 px-4 font-semibold text-right">Total Previsto USD</th>
+                    <th className="py-2.5 px-3 font-semibold text-right">Confirmada (R$)</th>
+                    <th className="py-2.5 px-3 font-semibold text-right">Estimada (R$)</th>
+                    <th className="py-2.5 px-4 font-semibold text-right">Total Previsto (R$)</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -639,8 +542,7 @@ export const CommissionReportTab: React.FC<CommissionReportTabProps> = ({
                       <td className="py-2.5 px-3 text-right">{m.volumeBags.toLocaleString('pt-BR')}</td>
                       <td className="py-2.5 px-3 text-right text-emerald-700">{formatBRL(m.confirmedBRL)}</td>
                       <td className="py-2.5 px-3 text-right text-blue-700">{formatBRL(m.estimatedBRL)}</td>
-                      <td className="py-2.5 px-3 text-right font-bold text-slate-900">{formatBRL(m.totalBRL)}</td>
-                      <td className="py-2.5 px-4 text-right font-semibold text-blue-700">{formatUSD(m.totalUSD)}</td>
+                      <td className="py-2.5 px-4 text-right font-bold text-slate-900">{formatBRL(m.totalBRL)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -654,8 +556,7 @@ export const CommissionReportTab: React.FC<CommissionReportTabProps> = ({
                     <th className="py-2.5 px-4 font-semibold">Mês Previsão</th>
                     <th className="py-2.5 px-3 font-semibold">Produtor</th>
                     <th className="py-2.5 px-3 font-semibold text-right">Contratos</th>
-                    <th className="py-2.5 px-3 font-semibold text-right">Valor BRL</th>
-                    <th className="py-2.5 px-4 font-semibold text-right">Valor USD</th>
+                    <th className="py-2.5 px-4 font-semibold text-right">Comissão Prevista (R$)</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -670,8 +571,7 @@ export const CommissionReportTab: React.FC<CommissionReportTabProps> = ({
                       <td className="py-2.5 px-4 font-semibold text-slate-900">{r.monthLabel}</td>
                       <td className="py-2.5 px-3 text-slate-800">{r.producerName}</td>
                       <td className="py-2.5 px-3 text-right">{r.contractsCount}</td>
-                      <td className="py-2.5 px-3 text-right font-semibold text-slate-900">{formatBRL(r.brl)}</td>
-                      <td className="py-2.5 px-4 text-right font-semibold text-blue-700">{formatUSD(r.usd)}</td>
+                      <td className="py-2.5 px-4 text-right font-semibold text-slate-900">{formatBRL(r.brl)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -685,8 +585,7 @@ export const CommissionReportTab: React.FC<CommissionReportTabProps> = ({
                     <th className="py-2.5 px-4 font-semibold">Produto</th>
                     <th className="py-2.5 px-3 font-semibold text-right">Contratos</th>
                     <th className="py-2.5 px-3 font-semibold text-right">Volume (scs)</th>
-                    <th className="py-2.5 px-3 font-semibold text-right">Comissão BRL</th>
-                    <th className="py-2.5 px-4 font-semibold text-right">Comissão USD</th>
+                    <th className="py-2.5 px-4 font-semibold text-right">Comissão Contratada (R$)</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -695,8 +594,7 @@ export const CommissionReportTab: React.FC<CommissionReportTabProps> = ({
                       <td className="py-2.5 px-4 font-semibold text-slate-900">{pr.product}</td>
                       <td className="py-2.5 px-3 text-right">{pr.contractsCount}</td>
                       <td className="py-2.5 px-3 text-right">{pr.totalBags.toLocaleString('pt-BR')}</td>
-                      <td className="py-2.5 px-3 text-right font-semibold text-slate-900">{formatBRL(pr.totalBRL)}</td>
-                      <td className="py-2.5 px-4 text-right font-semibold text-blue-700">{formatUSD(pr.totalUSD)}</td>
+                      <td className="py-2.5 px-4 text-right font-semibold text-slate-900">{formatBRL(pr.totalBRL)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -710,8 +608,7 @@ export const CommissionReportTab: React.FC<CommissionReportTabProps> = ({
                     <th className="py-2.5 px-4 font-semibold">Safra</th>
                     <th className="py-2.5 px-3 font-semibold text-right">Contratos</th>
                     <th className="py-2.5 px-3 font-semibold text-right">Volume (scs)</th>
-                    <th className="py-2.5 px-3 font-semibold text-right">Comissão BRL</th>
-                    <th className="py-2.5 px-4 font-semibold text-right">Comissão USD</th>
+                    <th className="py-2.5 px-4 font-semibold text-right">Comissão Contratada (R$)</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -720,8 +617,7 @@ export const CommissionReportTab: React.FC<CommissionReportTabProps> = ({
                       <td className="py-2.5 px-4 font-semibold text-slate-900">Safra {cr.crop}</td>
                       <td className="py-2.5 px-3 text-right">{cr.contractsCount}</td>
                       <td className="py-2.5 px-3 text-right">{cr.totalBags.toLocaleString('pt-BR')}</td>
-                      <td className="py-2.5 px-3 text-right font-semibold text-slate-900">{formatBRL(cr.totalBRL)}</td>
-                      <td className="py-2.5 px-4 text-right font-semibold text-blue-700">{formatUSD(cr.totalUSD)}</td>
+                      <td className="py-2.5 px-4 text-right font-semibold text-slate-900">{formatBRL(cr.totalBRL)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -737,10 +633,10 @@ export const CommissionReportTab: React.FC<CommissionReportTabProps> = ({
           <div className="px-5 py-3.5 border-b border-slate-200 bg-slate-50 flex flex-wrap items-center justify-between gap-3">
             <div>
               <h3 className="text-sm font-bold text-slate-900">
-                Matriz Dinâmica de Comissões ({matrixCurrency})
+                Matriz Dinâmica de Comissões (R$)
               </h3>
               <p className="text-xs text-slate-500">
-                Clique em qualquer célula para visualizar os contratos que compõem o valor previsto naquele mês.
+                Todos os valores consolidados em Reais (BRL). Clique em qualquer célula para visualizar os contratos correspondentes.
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -754,22 +650,6 @@ export const CommissionReportTab: React.FC<CommissionReportTabProps> = ({
                 <option value="PRODUCT">Linhas: Produto</option>
                 <option value="CROP">Linhas: Safra</option>
               </select>
-              <div className="flex border border-slate-300 rounded-lg overflow-hidden text-xs font-semibold">
-                <button
-                  type="button"
-                  onClick={() => setMatrixCurrency('BRL')}
-                  className={`px-3 py-1.5 ${matrixCurrency === 'BRL' ? 'bg-slate-900 text-white' : 'bg-white text-slate-600'}`}
-                >
-                  BRL
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setMatrixCurrency('USD')}
-                  className={`px-3 py-1.5 ${matrixCurrency === 'USD' ? 'bg-blue-700 text-white' : 'bg-white text-slate-600'}`}
-                >
-                  USD
-                </button>
-              </div>
             </div>
           </div>
 
@@ -786,18 +666,16 @@ export const CommissionReportTab: React.FC<CommissionReportTabProps> = ({
                     </th>
                   ))}
                   <th className="py-2.5 px-3 font-bold text-right bg-emerald-50 text-emerald-900 whitespace-nowrap border-l border-slate-200">
-                    Total Previsto
+                    Total Previsto (R$)
                   </th>
                   <th className="py-2.5 px-3 font-semibold text-right text-amber-800 whitespace-nowrap">
-                    Sem Venc.
+                    Sem Venc. (R$)
                   </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {matrix.rows.map((r) => {
-                  const total = matrixCurrency === 'USD' ? r.totalUSD : r.totalBRL;
-                  const undef = matrixCurrency === 'USD' ? r.undefinedUSD : r.undefinedBRL;
-                  if (total === 0 && undef === 0) return null;
+                  if (r.totalBRL === 0 && r.undefinedBRL === 0) return null;
                   return (
                     <tr key={r.key} className="hover:bg-slate-50">
                       <td className="sticky left-0 z-10 bg-white py-2 px-4 font-semibold text-slate-900 border-r border-slate-200">
@@ -821,7 +699,7 @@ export const CommissionReportTab: React.FC<CommissionReportTabProps> = ({
                         </button>
                       </td>
                       {matrix.monthKeys.map((mk) => {
-                        const cell = matrixCurrency === 'USD' ? r.cellsUSD[mk] : r.cellsBRL[mk];
+                        const cell = r.cells[mk];
                         return (
                           <td key={mk} className="py-2 px-3 text-right whitespace-nowrap">
                             {cell && cell.amount > 0 ? (
@@ -845,10 +723,10 @@ export const CommissionReportTab: React.FC<CommissionReportTabProps> = ({
                         );
                       })}
                       <td className="py-2 px-3 text-right font-bold text-slate-900 bg-emerald-50/40 border-l border-slate-200 whitespace-nowrap">
-                        {matrixCurrency === 'USD' ? formatUSD(total) : formatBRL(total)}
+                        {formatBRL(r.totalBRL)}
                       </td>
                       <td className="py-2 px-3 text-right text-amber-700 whitespace-nowrap">
-                        {undef > 0 ? (matrixCurrency === 'USD' ? formatUSD(undef) : formatBRL(undef)) : '-'}
+                        {r.undefinedBRL > 0 ? formatBRL(r.undefinedBRL) : '-'}
                       </td>
                     </tr>
                   );
@@ -857,10 +735,10 @@ export const CommissionReportTab: React.FC<CommissionReportTabProps> = ({
               <tfoot className="sticky bottom-0 z-20 bg-slate-100 border-t-2 border-slate-300 font-bold text-slate-900">
                 <tr>
                   <td className="sticky left-0 z-30 bg-slate-100 py-2.5 px-4 border-r border-slate-200">
-                    TOTAL GERAL ({matrixCurrency})
+                    TOTAL GERAL (R$)
                   </td>
                   {matrix.monthKeys.map((mk) => {
-                    const colTotal = matrixCurrency === 'USD' ? matrix.colTotalsUSD[mk] : matrix.colTotalsBRL[mk];
+                    const colTotal = matrix.colTotalsBRL[mk] || 0;
                     return (
                       <td key={mk} className="py-2.5 px-3 text-right whitespace-nowrap">
                         {colTotal > 0 ? colTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '-'}
@@ -868,10 +746,10 @@ export const CommissionReportTab: React.FC<CommissionReportTabProps> = ({
                     );
                   })}
                   <td className="py-2.5 px-3 text-right bg-emerald-100/80 text-emerald-950 border-l border-slate-200 whitespace-nowrap">
-                    {matrixCurrency === 'USD' ? formatUSD(matrix.grandTotalUSD) : formatBRL(matrix.grandTotalBRL)}
+                    {formatBRL(matrix.grandTotalBRL)}
                   </td>
                   <td className="py-2.5 px-3 text-right text-amber-800 whitespace-nowrap">
-                    {matrixCurrency === 'USD' ? formatUSD(matrix.grandUndefinedUSD) : formatBRL(matrix.grandUndefinedBRL)}
+                    {formatBRL(matrix.grandUndefinedBRL)}
                   </td>
                 </tr>
               </tfoot>
@@ -960,15 +838,16 @@ export const CommissionReportTab: React.FC<CommissionReportTabProps> = ({
                   )}
                   {selectedCols.totalBags !== false && <th className="py-2.5 px-3 font-semibold text-right">Vol. Contr. (scs)</th>}
                   {selectedCols.shippedBags && <th className="py-2.5 px-3 font-semibold text-right">Embarcado (scs)</th>}
-                  {selectedCols.commissionPerBag !== false && <th className="py-2.5 px-3 font-semibold text-right">Comissão/sc</th>}
+                  {selectedCols.commissionPerBag !== false && <th className="py-2.5 px-3 font-semibold text-right">Comissão (R$/sc)</th>}
                   {selectedCols.contractedCommission !== false && (
                     <th className="py-2.5 px-3 font-semibold text-right">
                       <button type="button" onClick={() => toggleSort('contractedCommission')} className="inline-flex items-center gap-1 hover:text-slate-900">
-                        Comissão Total <ArrowUpDown className="w-3 h-3" />
+                        Comissão Total (R$) <ArrowUpDown className="w-3 h-3" />
                       </button>
                     </th>
                   )}
-                  {selectedCols.shippedCommission && <th className="py-2.5 px-3 font-semibold text-right">Prop. Embarque</th>}
+                  {selectedCols.shippedCommission && <th className="py-2.5 px-3 font-semibold text-right">Prop. Embarque (R$)</th>}
+                  {selectedCols.contractCurrency && <th className="py-2.5 px-3 font-semibold">Moeda Merc.</th>}
                   {selectedCols.dueDate !== false && (
                     <th className="py-2.5 px-3 font-semibold">
                       <button type="button" onClick={() => toggleSort('dueDate')} className="inline-flex items-center gap-1 hover:text-slate-900">
@@ -981,65 +860,65 @@ export const CommissionReportTab: React.FC<CommissionReportTabProps> = ({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {pagedAnalytical.map((r: CommissionContractRow) => {
-                  const sym = r.currency === 'USD' ? 'US$' : 'R$';
-                  return (
-                    <tr key={r.contractId} className="hover:bg-slate-50">
-                      {selectedCols.contractNumber !== false && (
-                        <td className="py-2.5 px-4 font-semibold text-slate-900 whitespace-nowrap">{r.contractNumber}</td>
-                      )}
-                      {selectedCols.producerName !== false && (
-                        <td className="py-2.5 px-3 text-slate-800 max-w-[200px] truncate" title={r.producerName}>
-                          {r.producerName}
-                        </td>
-                      )}
-                      {selectedCols.farmName && (
-                        <td className="py-2.5 px-3 text-slate-600 max-w-[160px] truncate" title={r.farmName}>
-                          {r.farmName}
-                        </td>
-                      )}
-                      {selectedCols.product !== false && <td className="py-2.5 px-3">{r.product}</td>}
-                      {selectedCols.crop !== false && <td className="py-2.5 px-3">{r.crop}</td>}
-                      {selectedCols.closingDate !== false && (
-                        <td className="py-2.5 px-3 text-slate-600 whitespace-nowrap">{formatDateBR(r.closingDate)}</td>
-                      )}
-                      {selectedCols.totalBags !== false && (
-                        <td className="py-2.5 px-3 text-right">{r.totalBags.toLocaleString('pt-BR')}</td>
-                      )}
-                      {selectedCols.shippedBags && (
-                        <td className="py-2.5 px-3 text-right">{r.shippedBags.toLocaleString('pt-BR')}</td>
-                      )}
-                      {selectedCols.commissionPerBag !== false && (
-                        <td className="py-2.5 px-3 text-right whitespace-nowrap">
-                          {sym} {r.commissionPerBag.toFixed(2)}
-                        </td>
-                      )}
-                      {selectedCols.contractedCommission !== false && (
-                        <td className="py-2.5 px-3 text-right font-semibold text-slate-900 whitespace-nowrap">
-                          {sym} {r.contractedCommission.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </td>
-                      )}
-                      {selectedCols.shippedCommission && (
-                        <td className="py-2.5 px-3 text-right whitespace-nowrap">
-                          {sym} {r.shippedCommission.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </td>
-                      )}
-                      {selectedCols.dueDate !== false && (
-                        <td className="py-2.5 px-3 whitespace-nowrap text-slate-700">
-                          {r.dueDate ? formatDateBR(r.dueDate) : 'Sem vencimento'}
-                        </td>
-                      )}
-                      {selectedCols.financialStatus !== false && (
-                        <td className="py-2.5 px-3 text-slate-600 max-w-[220px] truncate" title={r.financialStatusLabel}>
-                          {r.financialStatusLabel}
-                        </td>
-                      )}
-                      {selectedCols.effectiveReceiptDate && (
-                        <td className="py-2.5 px-4 text-slate-400 whitespace-nowrap">Não controlado</td>
-                      )}
-                    </tr>
-                  );
-                })}
+                {pagedAnalytical.map((r: CommissionContractRow) => (
+                  <tr key={r.contractId} className="hover:bg-slate-50">
+                    {selectedCols.contractNumber !== false && (
+                      <td className="py-2.5 px-4 font-semibold text-slate-900 whitespace-nowrap">{r.contractNumber}</td>
+                    )}
+                    {selectedCols.producerName !== false && (
+                      <td className="py-2.5 px-3 text-slate-800 max-w-[200px] truncate" title={r.producerName}>
+                        {r.producerName}
+                      </td>
+                    )}
+                    {selectedCols.farmName && (
+                      <td className="py-2.5 px-3 text-slate-600 max-w-[160px] truncate" title={r.farmName}>
+                        {r.farmName}
+                      </td>
+                    )}
+                    {selectedCols.product !== false && <td className="py-2.5 px-3">{r.product}</td>}
+                    {selectedCols.crop !== false && <td className="py-2.5 px-3">{r.crop}</td>}
+                    {selectedCols.closingDate !== false && (
+                      <td className="py-2.5 px-3 text-slate-600 whitespace-nowrap">{formatDateBR(r.closingDate)}</td>
+                    )}
+                    {selectedCols.totalBags !== false && (
+                      <td className="py-2.5 px-3 text-right">{r.totalBags.toLocaleString('pt-BR')}</td>
+                    )}
+                    {selectedCols.shippedBags && (
+                      <td className="py-2.5 px-3 text-right">{r.shippedBags.toLocaleString('pt-BR')}</td>
+                    )}
+                    {selectedCols.commissionPerBag !== false && (
+                      <td className="py-2.5 px-3 text-right whitespace-nowrap">
+                        R$ {r.commissionPerBag.toFixed(2)}
+                      </td>
+                    )}
+                    {selectedCols.contractedCommission !== false && (
+                      <td className="py-2.5 px-3 text-right font-semibold text-slate-900 whitespace-nowrap">
+                        {formatBRL(r.contractedCommission)}
+                      </td>
+                    )}
+                    {selectedCols.shippedCommission && (
+                      <td className="py-2.5 px-3 text-right whitespace-nowrap">
+                        {formatBRL(r.shippedCommission)}
+                      </td>
+                    )}
+                    {selectedCols.contractCurrency && (
+                      <td className="py-2.5 px-3 text-slate-500 whitespace-nowrap">{r.contractCurrency}</td>
+                    )}
+                    {selectedCols.dueDate !== false && (
+                      <td className="py-2.5 px-3 whitespace-nowrap text-slate-700">
+                        {r.dueDate ? formatDateBR(r.dueDate) : 'Sem vencimento'}
+                      </td>
+                    )}
+                    {selectedCols.financialStatus !== false && (
+                      <td className="py-2.5 px-3 text-slate-600 max-w-[220px] truncate" title={r.financialStatusLabel}>
+                        {r.financialStatusLabel}
+                      </td>
+                    )}
+                    {selectedCols.effectiveReceiptDate && (
+                      <td className="py-2.5 px-4 text-slate-400 whitespace-nowrap">Não controlado</td>
+                    )}
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>

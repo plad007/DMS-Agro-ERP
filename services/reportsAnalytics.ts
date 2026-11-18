@@ -629,11 +629,11 @@ export interface CommissionContractRow {
   paymentType?: string;
   totalBags: number;
   shippedBags: number;
-  commissionPerBag: number;
-  contractedCommission: number;
-  shippedCommission: number;
-  currency: CurrencyCode;
-  exchangeRate: number;
+  commissionPerBag: number; // sempre em R$/sc
+  contractedCommission: number; // sempre em R$ (totalBags * commissionPerBag)
+  shippedCommission: number; // sempre em R$ (shippedBags * commissionPerBag)
+  contractCurrency: CurrencyCode; // moeda da negociação da mercadoria (informativo/filtro apenas)
+  commissionCurrency: 'BRL'; // comissão é invariavelmente BRL
   dueDate: string | null;
   dueMonthKey: string | null;
   forecastOrigin: ForecastOrigin;
@@ -647,11 +647,6 @@ export interface CommissionContractRow {
   observation: string;
 }
 
-export interface CurrencyMetricMap {
-  BRL: number;
-  USD: number;
-}
-
 export interface CommissionMatrixData {
   rowDimension: 'PRODUCER' | 'GROUP_SELECTION' | 'PRODUCT' | 'CROP';
   monthKeys: string[];
@@ -659,20 +654,14 @@ export interface CommissionMatrixData {
     key: string;
     label: string;
     subLabel?: string;
-    cellsBRL: Record<string, { amount: number; contractIds: string[] }>;
-    cellsUSD: Record<string, { amount: number; contractIds: string[] }>;
+    cells: Record<string, { amount: number; contractIds: string[] }>;
     totalBRL: number;
-    totalUSD: number;
     undefinedBRL: number;
-    undefinedUSD: number;
     contractIds: string[];
   }>;
   colTotalsBRL: Record<string, number>;
-  colTotalsUSD: Record<string, number>;
   grandTotalBRL: number;
-  grandTotalUSD: number;
   grandUndefinedBRL: number;
-  grandUndefinedUSD: number;
 }
 
 export const resolveCommissionForContract = (
@@ -683,6 +672,7 @@ export const resolveCommissionForContract = (
   const totalBags = Number(c.totalBags) || 0;
   const shippedBags = item.logistics.knownShippedBags;
   const commissionPerBag = Number(c.commissionPerBag) || 0;
+  // Regra definitiva: Comissão Total = Volume contratado em sacas x Valor unitário em R$ (sem conversão cambial)
   const contractedCommission = totalBags * commissionPerBag;
   const shippedCommission = shippedBags * commissionPerBag;
 
@@ -824,8 +814,8 @@ export const resolveCommissionForContract = (
     commissionPerBag,
     contractedCommission,
     shippedCommission,
-    currency: c.currency,
-    exchangeRate: Number(c.exchangeRate) || 0,
+    contractCurrency: c.currency,
+    commissionCurrency: 'BRL',
     dueDate,
     dueMonthKey: dueParts ? dueParts.monthKey : null,
     forecastOrigin,
@@ -845,22 +835,19 @@ export interface CommissionAnalyticsResult {
   contractsCount: number;
   totalBags: number;
   totalShippedBags: number;
-  contractedByCurrency: CurrencyMetricMap;
-  shippedByCurrency: CurrencyMetricMap;
-  forecastConfirmedByCurrency: CurrencyMetricMap;
-  forecastEstimatedByCurrency: CurrencyMetricMap;
-  forecastTotalPeriodByCurrency: CurrencyMetricMap;
-  undefinedDueByCurrency: CurrencyMetricMap;
-  weightedAvgPerBagByCurrency: { BRL: number | null; USD: number | null };
+  totalContractedBRL: number;
+  totalShippedBRL: number;
+  forecastConfirmedBRL: number;
+  forecastEstimatedBRL: number;
+  forecastTotalPeriodBRL: number;
+  undefinedDueBRL: number;
+  weightedAvgPerBagBRL: number | null;
   monthlySeries: Array<{
     monthKey: string;
     label: string;
     confirmedBRL: number;
     estimatedBRL: number;
     totalBRL: number;
-    confirmedUSD: number;
-    estimatedUSD: number;
-    totalUSD: number;
     volumeBags: number;
     contractIds: string[];
   }>;
@@ -871,7 +858,6 @@ export interface CommissionAnalyticsResult {
     contractsCount: number;
     totalBags: number;
     totalBRL: number;
-    totalUSD: number;
     confirmedBRL: number;
     estimatedBRL: number;
     undefinedBRL: number;
@@ -882,14 +868,12 @@ export interface CommissionAnalyticsResult {
     contractsCount: number;
     totalBags: number;
     totalBRL: number;
-    totalUSD: number;
   }>;
   summaryByCrop: Array<{
     crop: string;
     contractsCount: number;
     totalBags: number;
     totalBRL: number;
-    totalUSD: number;
   }>;
 }
 
@@ -900,7 +884,7 @@ export const buildCommissionAnalytics = (
 ): CommissionAnalyticsResult => {
   const todayIso = getTodayIsoLocal();
 
-  // First filter by non-date filters + status/producer/crop/product/currency
+  // First filter by non-date filters + status/producer/crop/product/commodity currency
   const activeGroup = filters.economicGroupId
     ? economicGroups.find((g) => g.id === filters.economicGroupId)
     : undefined;
@@ -944,14 +928,12 @@ export const buildCommissionAnalytics = (
     });
   });
 
-  const contractedByCurrency: CurrencyMetricMap = { BRL: 0, USD: 0 };
-  const shippedByCurrency: CurrencyMetricMap = { BRL: 0, USD: 0 };
-  const forecastConfirmedByCurrency: CurrencyMetricMap = { BRL: 0, USD: 0 };
-  const forecastEstimatedByCurrency: CurrencyMetricMap = { BRL: 0, USD: 0 };
-  const forecastTotalPeriodByCurrency: CurrencyMetricMap = { BRL: 0, USD: 0 };
-  const undefinedDueByCurrency: CurrencyMetricMap = { BRL: 0, USD: 0 };
-  const bagsByCurrency: CurrencyMetricMap = { BRL: 0, USD: 0 };
-
+  let totalContractedBRL = 0;
+  let totalShippedBRL = 0;
+  let forecastConfirmedBRL = 0;
+  let forecastEstimatedBRL = 0;
+  let forecastTotalPeriodBRL = 0;
+  let undefinedDueBRL = 0;
   let totalBags = 0;
   let totalShippedBags = 0;
 
@@ -963,9 +945,6 @@ export const buildCommissionAnalytics = (
       confirmedBRL: number;
       estimatedBRL: number;
       totalBRL: number;
-      confirmedUSD: number;
-      estimatedUSD: number;
-      totalUSD: number;
       volumeBags: number;
       contractIds: Set<string>;
     }
@@ -980,7 +959,6 @@ export const buildCommissionAnalytics = (
       contractsCount: number;
       totalBags: number;
       totalBRL: number;
-      totalUSD: number;
       confirmedBRL: number;
       estimatedBRL: number;
       undefinedBRL: number;
@@ -990,22 +968,21 @@ export const buildCommissionAnalytics = (
 
   const productMap = new Map<
     string,
-    { product: string; contractsCount: number; totalBags: number; totalBRL: number; totalUSD: number }
+    { product: string; contractsCount: number; totalBags: number; totalBRL: number }
   >();
 
   const cropMap = new Map<
     string,
-    { crop: string; contractsCount: number; totalBags: number; totalBRL: number; totalUSD: number }
+    { crop: string; contractsCount: number; totalBags: number; totalBRL: number }
   >();
 
   for (const row of rows) {
     totalBags += row.totalBags;
     totalShippedBags += row.shippedBags;
-    contractedByCurrency[row.currency] += row.contractedCommission;
-    shippedByCurrency[row.currency] += row.shippedCommission;
-    bagsByCurrency[row.currency] += row.totalBags;
+    totalContractedBRL += row.contractedCommission;
+    totalShippedBRL += row.shippedCommission;
 
-    // Producer summary
+    // Producer summary (sempre consolidado em BRL)
     const pEntry = producerMap.get(row.producerKey) || {
       key: row.producerKey,
       name: row.producerName,
@@ -1013,7 +990,6 @@ export const buildCommissionAnalytics = (
       contractsCount: 0,
       totalBags: 0,
       totalBRL: 0,
-      totalUSD: 0,
       confirmedBRL: 0,
       estimatedBRL: 0,
       undefinedBRL: 0,
@@ -1021,7 +997,7 @@ export const buildCommissionAnalytics = (
     };
     pEntry.contractsCount += 1;
     pEntry.totalBags += row.totalBags;
-    pEntry[row.currency === 'USD' ? 'totalUSD' : 'totalBRL'] += row.contractedCommission;
+    pEntry.totalBRL += row.contractedCommission;
     pEntry.contractIds.push(row.contractId);
 
     // Product summary
@@ -1029,12 +1005,11 @@ export const buildCommissionAnalytics = (
       product: row.product,
       contractsCount: 0,
       totalBags: 0,
-      totalBRL: 0,
-      totalUSD: 0
+      totalBRL: 0
     };
     prodEntry.contractsCount += 1;
     prodEntry.totalBags += row.totalBags;
-    prodEntry[row.currency === 'USD' ? 'totalUSD' : 'totalBRL'] += row.contractedCommission;
+    prodEntry.totalBRL += row.contractedCommission;
     productMap.set(row.product, prodEntry);
 
     // Crop summary
@@ -1042,15 +1017,14 @@ export const buildCommissionAnalytics = (
       crop: row.crop,
       contractsCount: 0,
       totalBags: 0,
-      totalBRL: 0,
-      totalUSD: 0
+      totalBRL: 0
     };
     cropEntry.contractsCount += 1;
     cropEntry.totalBags += row.totalBags;
-    cropEntry[row.currency === 'USD' ? 'totalUSD' : 'totalBRL'] += row.contractedCommission;
+    cropEntry.totalBRL += row.contractedCommission;
     cropMap.set(row.crop, cropEntry);
 
-    // Slices for monthly forecast & due classification
+    // Slices for monthly forecast & due classification (sempre em BRL)
     for (const sl of row.slices) {
       if (hasDateFilter) {
         if (!sl.dueDate) continue;
@@ -1063,18 +1037,18 @@ export const buildCommissionAnalytics = (
       }
 
       if (sl.origin === 'UNDEFINED' || sl.monthKey === '__UNDEFINED__') {
-        undefinedDueByCurrency[row.currency] += sl.amount;
-        if (row.currency === 'BRL') pEntry.undefinedBRL += sl.amount;
+        undefinedDueBRL += sl.amount;
+        pEntry.undefinedBRL += sl.amount;
         continue;
       }
 
-      forecastTotalPeriodByCurrency[row.currency] += sl.amount;
+      forecastTotalPeriodBRL += sl.amount;
       if (sl.origin === 'CONFIRMED') {
-        forecastConfirmedByCurrency[row.currency] += sl.amount;
-        if (row.currency === 'BRL') pEntry.confirmedBRL += sl.amount;
+        forecastConfirmedBRL += sl.amount;
+        pEntry.confirmedBRL += sl.amount;
       } else {
-        forecastEstimatedByCurrency[row.currency] += sl.amount;
-        if (row.currency === 'BRL') pEntry.estimatedBRL += sl.amount;
+        forecastEstimatedBRL += sl.amount;
+        pEntry.estimatedBRL += sl.amount;
       }
 
       const mEntry = monthlyMap.get(sl.monthKey) || {
@@ -1083,22 +1057,13 @@ export const buildCommissionAnalytics = (
         confirmedBRL: 0,
         estimatedBRL: 0,
         totalBRL: 0,
-        confirmedUSD: 0,
-        estimatedUSD: 0,
-        totalUSD: 0,
         volumeBags: 0,
         contractIds: new Set<string>()
       };
 
-      if (row.currency === 'USD') {
-        if (sl.origin === 'CONFIRMED') mEntry.confirmedUSD += sl.amount;
-        else mEntry.estimatedUSD += sl.amount;
-        mEntry.totalUSD += sl.amount;
-      } else {
-        if (sl.origin === 'CONFIRMED') mEntry.confirmedBRL += sl.amount;
-        else mEntry.estimatedBRL += sl.amount;
-        mEntry.totalBRL += sl.amount;
-      }
+      if (sl.origin === 'CONFIRMED') mEntry.confirmedBRL += sl.amount;
+      else mEntry.estimatedBRL += sl.amount;
+      mEntry.totalBRL += sl.amount;
       mEntry.volumeBags += sl.bags;
       mEntry.contractIds.add(row.contractId);
       monthlyMap.set(sl.monthKey, mEntry);
@@ -1114,11 +1079,8 @@ export const buildCommissionAnalytics = (
       contractIds: Array.from(m.contractIds)
     }));
 
-  const summaryByProducer = Array.from(producerMap.values()).sort(
-    (a, b) => b.totalBRL + b.totalUSD - (a.totalBRL + a.totalUSD)
-  );
-
-  const summaryByProduct = Array.from(productMap.values()).sort((a, b) => b.totalBags - a.totalBags);
+  const summaryByProducer = Array.from(producerMap.values()).sort((a, b) => b.totalBRL - a.totalBRL);
+  const summaryByProduct = Array.from(productMap.values()).sort((a, b) => b.totalBRL - a.totalBRL);
   const summaryByCrop = Array.from(cropMap.values()).sort(
     (a, b) => getCropYearNumber(b.crop) - getCropYearNumber(a.crop)
   );
@@ -1128,16 +1090,13 @@ export const buildCommissionAnalytics = (
     contractsCount: rows.length,
     totalBags,
     totalShippedBags,
-    contractedByCurrency,
-    shippedByCurrency,
-    forecastConfirmedByCurrency,
-    forecastEstimatedByCurrency,
-    forecastTotalPeriodByCurrency,
-    undefinedDueByCurrency,
-    weightedAvgPerBagByCurrency: {
-      BRL: bagsByCurrency.BRL > 0 ? contractedByCurrency.BRL / bagsByCurrency.BRL : null,
-      USD: bagsByCurrency.USD > 0 ? contractedByCurrency.USD / bagsByCurrency.USD : null
-    },
+    totalContractedBRL,
+    totalShippedBRL,
+    forecastConfirmedBRL,
+    forecastEstimatedBRL,
+    forecastTotalPeriodBRL,
+    undefinedDueBRL,
+    weightedAvgPerBagBRL: totalBags > 0 ? totalContractedBRL / totalBags : null,
     monthlySeries,
     summaryByProducer,
     summaryByProduct,
@@ -1161,12 +1120,9 @@ export const buildCommissionMatrix = (
       key: string;
       label: string;
       subLabel?: string;
-      cellsBRL: Record<string, { amount: number; contractIds: Set<string> }>;
-      cellsUSD: Record<string, { amount: number; contractIds: Set<string> }>;
+      cells: Record<string, { amount: number; contractIds: Set<string> }>;
       totalBRL: number;
-      totalUSD: number;
       undefinedBRL: number;
-      undefinedUSD: number;
       contractIds: Set<string>;
     }
   >();
@@ -1194,12 +1150,9 @@ export const buildCommissionMatrix = (
       key: rowKey,
       label: rowLabel,
       subLabel: rowSubLabel,
-      cellsBRL: {},
-      cellsUSD: {},
+      cells: {},
       totalBRL: 0,
-      totalUSD: 0,
       undefinedBRL: 0,
-      undefinedUSD: 0,
       contractIds: new Set<string>()
     };
 
@@ -1217,21 +1170,17 @@ export const buildCommissionMatrix = (
       }
 
       if (sl.origin === 'UNDEFINED' || sl.monthKey === '__UNDEFINED__') {
-        if (r.currency === 'USD') entry.undefinedUSD += sl.amount;
-        else entry.undefinedBRL += sl.amount;
+        entry.undefinedBRL += sl.amount;
         continue;
       }
 
       monthKeySet.add(sl.monthKey);
-      const targetCells = r.currency === 'USD' ? entry.cellsUSD : entry.cellsBRL;
-      if (!targetCells[sl.monthKey]) {
-        targetCells[sl.monthKey] = { amount: 0, contractIds: new Set<string>() };
+      if (!entry.cells[sl.monthKey]) {
+        entry.cells[sl.monthKey] = { amount: 0, contractIds: new Set<string>() };
       }
-      targetCells[sl.monthKey].amount += sl.amount;
-      targetCells[sl.monthKey].contractIds.add(r.contractId);
-
-      if (r.currency === 'USD') entry.totalUSD += sl.amount;
-      else entry.totalBRL += sl.amount;
+      entry.cells[sl.monthKey].amount += sl.amount;
+      entry.cells[sl.monthKey].contractIds.add(r.contractId);
+      entry.totalBRL += sl.amount;
     }
 
     rowMap.set(rowKey, entry);
@@ -1239,67 +1188,47 @@ export const buildCommissionMatrix = (
 
   const monthKeys = Array.from(monthKeySet).sort((a, b) => a.localeCompare(b));
   const colTotalsBRL: Record<string, number> = {};
-  const colTotalsUSD: Record<string, number> = {};
   monthKeys.forEach((mk) => {
     colTotalsBRL[mk] = 0;
-    colTotalsUSD[mk] = 0;
   });
 
   let grandTotalBRL = 0;
-  let grandTotalUSD = 0;
   let grandUndefinedBRL = 0;
-  let grandUndefinedUSD = 0;
 
   const finalRows = Array.from(rowMap.values())
     .map((entry) => {
-      const cellsBRL: Record<string, { amount: number; contractIds: string[] }> = {};
-      const cellsUSD: Record<string, { amount: number; contractIds: string[] }> = {};
+      const cells: Record<string, { amount: number; contractIds: string[] }> = {};
       for (const mk of monthKeys) {
-        if (entry.cellsBRL[mk]) {
-          cellsBRL[mk] = {
-            amount: entry.cellsBRL[mk].amount,
-            contractIds: Array.from(entry.cellsBRL[mk].contractIds)
+        if (entry.cells[mk]) {
+          cells[mk] = {
+            amount: entry.cells[mk].amount,
+            contractIds: Array.from(entry.cells[mk].contractIds)
           };
-          colTotalsBRL[mk] += entry.cellsBRL[mk].amount;
-        }
-        if (entry.cellsUSD[mk]) {
-          cellsUSD[mk] = {
-            amount: entry.cellsUSD[mk].amount,
-            contractIds: Array.from(entry.cellsUSD[mk].contractIds)
-          };
-          colTotalsUSD[mk] += entry.cellsUSD[mk].amount;
+          colTotalsBRL[mk] += entry.cells[mk].amount;
         }
       }
       grandTotalBRL += entry.totalBRL;
-      grandTotalUSD += entry.totalUSD;
       grandUndefinedBRL += entry.undefinedBRL;
-      grandUndefinedUSD += entry.undefinedUSD;
 
       return {
         key: entry.key,
         label: entry.label,
         subLabel: entry.subLabel,
-        cellsBRL,
-        cellsUSD,
+        cells,
         totalBRL: entry.totalBRL,
-        totalUSD: entry.totalUSD,
         undefinedBRL: entry.undefinedBRL,
-        undefinedUSD: entry.undefinedUSD,
         contractIds: Array.from(entry.contractIds)
       };
     })
-    .sort((a, b) => b.totalBRL + b.totalUSD - (a.totalBRL + a.totalUSD));
+    .sort((a, b) => b.totalBRL - a.totalBRL);
 
   return {
     rowDimension,
     monthKeys,
     rows: finalRows,
     colTotalsBRL,
-    colTotalsUSD,
     grandTotalBRL,
-    grandTotalUSD,
-    grandUndefinedBRL,
-    grandUndefinedUSD
+    grandUndefinedBRL
   };
 };
 

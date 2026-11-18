@@ -101,12 +101,9 @@ export const buildCommissionExportSheets = (
       sheetName: 'Resumo_Mensal',
       headers: [
         'Mês/Ano',
-        'Previsto Confirmado (BRL)',
-        'Previsto Estimado (BRL)',
-        'Total Previsto (BRL)',
-        'Previsto Confirmado (USD)',
-        'Previsto Estimado (USD)',
-        'Total Previsto (USD)',
+        'Previsto Confirmado (R$)',
+        'Previsto Estimado (R$)',
+        'Total Previsto (R$)',
         'Volume Base (scs)'
       ],
       rows: analytics.monthlySeries.map((m) => [
@@ -114,9 +111,6 @@ export const buildCommissionExportSheets = (
         Number(m.confirmedBRL.toFixed(2)),
         Number(m.estimatedBRL.toFixed(2)),
         Number(m.totalBRL.toFixed(2)),
-        Number(m.confirmedUSD.toFixed(2)),
-        Number(m.estimatedUSD.toFixed(2)),
-        Number(m.totalUSD.toFixed(2)),
         Number(m.volumeBags.toFixed(2))
       ])
     });
@@ -128,8 +122,10 @@ export const buildCommissionExportSheets = (
         'CPF/CNPJ',
         'Contratos',
         'Volume (scs)',
-        'Comissão Contratada (BRL)',
-        'Comissão Contratada (USD)'
+        'Comissão Contratada (R$)',
+        'Prevista Confirmada (R$)',
+        'Prevista Estimada (R$)',
+        'Sem Vencimento (R$)'
       ],
       rows: analytics.summaryByProducer.map((p) => [
         p.name,
@@ -137,7 +133,9 @@ export const buildCommissionExportSheets = (
         p.contractsCount,
         Number(p.totalBags.toFixed(2)),
         Number(p.totalBRL.toFixed(2)),
-        Number(p.totalUSD.toFixed(2))
+        Number(p.confirmedBRL.toFixed(2)),
+        Number(p.estimatedBRL.toFixed(2)),
+        Number(p.undefinedBRL.toFixed(2))
       ])
     });
   }
@@ -145,22 +143,24 @@ export const buildCommissionExportSheets = (
   if (mode === 'MATRIX' || mode === 'ALL') {
     const headers = [
       'Produtor / Agrupamento',
-      ...matrix.monthKeys.map((mk) => `${formatMonthLabel(mk)} (BRL)`),
-      ...matrix.monthKeys.map((mk) => `${formatMonthLabel(mk)} (USD)`),
-      'Total Previsto (BRL)',
-      'Total Previsto (USD)',
-      'Sem Vencimento (BRL)',
-      'Sem Vencimento (USD)'
+      ...matrix.monthKeys.map((mk) => `${formatMonthLabel(mk)} (R$)`),
+      'Total Previsto (R$)',
+      'Sem Vencimento (R$)'
     ];
-    const rows = matrix.rows.map((r) => [
-      r.label,
-      ...matrix.monthKeys.map((mk) => Number((r.cellsBRL[mk]?.amount || 0).toFixed(2))),
-      ...matrix.monthKeys.map((mk) => Number((r.cellsUSD[mk]?.amount || 0).toFixed(2))),
-      Number(r.totalBRL.toFixed(2)),
-      Number(r.totalUSD.toFixed(2)),
-      Number(r.undefinedBRL.toFixed(2)),
-      Number(r.undefinedUSD.toFixed(2))
-    ]);
+    const rows = [
+      ...matrix.rows.map((r) => [
+        r.label,
+        ...matrix.monthKeys.map((mk) => Number((r.cells[mk]?.amount || 0).toFixed(2))),
+        Number(r.totalBRL.toFixed(2)),
+        Number(r.undefinedBRL.toFixed(2))
+      ]),
+      [
+        'TOTAL GERAL (R$)',
+        ...matrix.monthKeys.map((mk) => Number((matrix.colTotalsBRL[mk] || 0).toFixed(2))),
+        Number(matrix.grandTotalBRL.toFixed(2)),
+        Number(matrix.grandUndefinedBRL.toFixed(2))
+      ]
+    ];
     sheets.push({ sheetName: 'Matriz_Comissoes', headers, rows });
   }
 
@@ -174,10 +174,10 @@ export const buildCommissionExportSheets = (
       { key: 'closingDate', header: 'Fechamento', get: (r) => formatDateBR(r.closingDate) },
       { key: 'totalBags', header: 'Vol. Contratado (scs)', get: (r) => Number(r.totalBags.toFixed(2)) },
       { key: 'shippedBags', header: 'Vol. Embarcado (scs)', get: (r) => Number(r.shippedBags.toFixed(2)) },
-      { key: 'commissionPerBag', header: 'Comissão Unitária', get: (r) => Number(r.commissionPerBag.toFixed(2)) },
-      { key: 'contractedCommission', header: 'Comissão Contratada', get: (r) => Number(r.contractedCommission.toFixed(2)) },
-      { key: 'shippedCommission', header: 'Comissão Prop. Embarque', get: (r) => Number(r.shippedCommission.toFixed(2)) },
-      { key: 'currency', header: 'Moeda', get: (r) => r.currency },
+      { key: 'commissionPerBag', header: 'Comissão Unitária (R$/sc)', get: (r) => Number(r.commissionPerBag.toFixed(2)) },
+      { key: 'contractedCommission', header: 'Comissão Contratada (R$)', get: (r) => Number(r.contractedCommission.toFixed(2)) },
+      { key: 'shippedCommission', header: 'Comissão Prop. Embarque (R$)', get: (r) => Number(r.shippedCommission.toFixed(2)) },
+      { key: 'contractCurrency', header: 'Moeda Mercadoria', get: (r) => r.contractCurrency },
       { key: 'dueDate', header: 'Previsão Recebimento', get: (r) => (r.dueDate ? formatDateBR(r.dueDate) : 'Sem vencimento') },
       { key: 'effectiveReceiptDate', header: 'Data Efetiva Receb.', get: () => 'Não controlado' },
       { key: 'receivedAmount', header: 'Valor Recebido', get: () => 'Não controlado' },

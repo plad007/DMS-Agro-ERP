@@ -56,7 +56,7 @@ ALTER TABLE public.economic_group_producers ENABLE ROW LEVEL SECURITY;
     id: 'commission_receipts',
     title: '2. Controle Efetivo de Recebimentos de Comissões (Contas a Receber)',
     purpose:
-      'Permite registrar recebimentos totais, parciais e múltiplos lançamentos vinculados a um contrato (sempre devidos pelo vendedor/produtor), além de estornos rastreáveis sem apagar histórico. Não cria comissão sobre compradores e não utiliza shipments.paid.',
+      'Permite registrar recebimentos totais, parciais e múltiplos lançamentos vinculados a um contrato (sempre devidos pelo vendedor/produtor e sempre expressos em BRL, sem conversão cambial), além de estornos rastreáveis sem apagar histórico. Não cria comissão sobre compradores e não utiliza shipments.paid.',
     dependencies: 'Tabela existente: public.contracts(id). Não gera débitos automáticos para contratos históricos.',
     securityNotes:
       'Operações financeiras de escrita exigem controle de acesso adequado (Supabase Auth + RLS por perfil autorizado antes de liberar gravação em produção).',
@@ -68,14 +68,13 @@ CREATE TABLE IF NOT EXISTS public.financial_control_settings (
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 
--- 2) Tabela de Recebimentos de Comissões (suporta baixas parciais e estornos rastreáveis)
+-- 2) Tabela de Recebimentos de Comissões (sempre em BRL; suporta baixas parciais e estornos rastreáveis)
 CREATE TABLE IF NOT EXISTS public.commission_receipts (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   contract_id uuid NOT NULL REFERENCES public.contracts(id) ON DELETE RESTRICT,
   receipt_date date NOT NULL,
   amount numeric(14, 2) NOT NULL CHECK (amount > 0),
-  currency text NOT NULL CHECK (currency IN ('BRL', 'USD')),
-  exchange_rate_applied numeric(12, 4),
+  currency text NOT NULL DEFAULT 'BRL' CHECK (currency = 'BRL'),
   payment_method text,
   notes text,
   is_reversed boolean NOT NULL DEFAULT false,

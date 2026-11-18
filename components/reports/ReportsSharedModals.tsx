@@ -68,19 +68,16 @@ export const ContractDrillDownModal: React.FC<ContractDrillDownModalProps> = ({
 
   const totals = useMemo(() => {
     let bags = 0;
-    let commBRL = 0;
-    let commUSD = 0;
+    let totalCommissionBRL = 0;
     for (const item of filtered) {
       const b = Number(item.contract.totalBags) || 0;
       const comm = b * (Number(item.contract.commissionPerBag) || 0);
       bags += b;
-      if (item.contract.currency === 'USD') commUSD += comm;
-      else commBRL += comm;
+      totalCommissionBRL += comm;
     }
     return {
       volume: bagsToUnit(bags, unit),
-      commBRL,
-      commUSD
+      totalCommissionBRL
     };
   }, [filtered, unit]);
 
@@ -126,28 +123,13 @@ export const ContractDrillDownModal: React.FC<ContractDrillDownModalProps> = ({
             </span>
             {showCommissionColumn && (
               <>
-                {totals.commBRL > 0 && (
-                  <>
-                    <span>·</span>
-                    <span>
-                      Comissão BRL:{' '}
-                      <strong className="text-emerald-700">
-                        R$ {totals.commBRL.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                      </strong>
-                    </span>
-                  </>
-                )}
-                {totals.commUSD > 0 && (
-                  <>
-                    <span>·</span>
-                    <span>
-                      Comissão USD:{' '}
-                      <strong className="text-blue-700">
-                        US$ {totals.commUSD.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                      </strong>
-                    </span>
-                  </>
-                )}
+                <span>·</span>
+                <span>
+                  Comissão Total (R$):{' '}
+                  <strong className="text-emerald-700">
+                    R$ {totals.totalCommissionBRL.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </strong>
+                </span>
               </>
             )}
           </div>
@@ -166,7 +148,7 @@ export const ContractDrillDownModal: React.FC<ContractDrillDownModalProps> = ({
                 <th className="py-2.5 px-3 font-semibold text-right">Volume</th>
                 <th className="py-2.5 px-3 font-semibold text-right">Preço (/sc)</th>
                 {showCommissionColumn && (
-                  <th className="py-2.5 px-3 font-semibold text-right">Comissão Total</th>
+                  <th className="py-2.5 px-3 font-semibold text-right">Comissão Total (R$)</th>
                 )}
                 <th className="py-2.5 px-4 font-semibold">Status</th>
               </tr>
@@ -175,7 +157,7 @@ export const ContractDrillDownModal: React.FC<ContractDrillDownModalProps> = ({
               {filtered.map((item) => {
                 const c = item.contract;
                 const vol = bagsToUnit(Number(c.totalBags) || 0, unit);
-                const sym = c.currency === 'USD' ? 'US$' : 'R$';
+                const priceSym = c.currency === 'USD' ? 'US$' : 'R$';
                 const totalComm = (Number(c.totalBags) || 0) * (Number(c.commissionPerBag) || 0);
                 return (
                   <tr key={c.id} className="hover:bg-slate-50/80">
@@ -201,14 +183,14 @@ export const ContractDrillDownModal: React.FC<ContractDrillDownModalProps> = ({
                     </td>
                     <td className="py-2.5 px-3 text-right text-slate-700 whitespace-nowrap">
                       {c.isFixed && Number(c.finalPrice) > 0
-                        ? `${sym} ${Number(c.finalPrice).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                        ? `${priceSym} ${Number(c.finalPrice).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
                         : Number(c.finalPrice) > 0
-                        ? `${sym} ${Number(c.finalPrice).toFixed(2)} (Ind.)`
+                        ? `${priceSym} ${Number(c.finalPrice).toFixed(2)} (Ind.)`
                         : 'A Fixar'}
                     </td>
                     {showCommissionColumn && (
                       <td className="py-2.5 px-3 text-right font-semibold text-slate-900 whitespace-nowrap">
-                        {sym} {totalComm.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        R$ {totalComm.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </td>
                     )}
                     <td className="py-2.5 px-4 text-slate-600 whitespace-nowrap">{item.normalizedStatus}</td>

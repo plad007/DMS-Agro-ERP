@@ -680,7 +680,7 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
       basisComponent: Number(formData.basisComponent || 0),
       costComponent: Number(formData.costComponent || 0),
       finalPrice: Number(calculatePrice()), 
-      commissionPerBag: Number(formData.commissionPerBag),
+      commissionPerBag: Number(formData.commissionPerBag || 0),
       paymentDate: paymentDate,
       paymentType: formData.paymentType,
       paymentDays: formData.paymentDays,
@@ -796,7 +796,6 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
     // Use stored bank details or fallback to first available from producer
     const bank = contract.sellerBankDetails || (seller?.bankDetails && seller.bankDetails.length > 0 ? seller.bankDetails[0] : undefined);
 
-    const currencySymbol = contract.currency === 'USD' ? 'US$' : 'R$';
     const hasCommissionPerBag =
       contract.commissionPerBag !== null &&
       contract.commissionPerBag !== undefined &&
@@ -950,13 +949,13 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
                                 <div>
                                     <span className="font-bold">Comissão Unitária:</span>{' '}
                                     {hasCommissionPerBag
-                                        ? `${currencySymbol} ${Number(contract.commissionPerBag).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} / saca`
+                                        ? `R$ ${Number(contract.commissionPerBag).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} / saca`
                                         : 'Não informada no contrato'}
                                 </div>
                                 <div>
                                     <span className="font-bold">Valor Total:</span>{' '}
                                     {totalCommission !== null
-                                        ? `${currencySymbol} ${totalCommission.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                                        ? `R$ ${totalCommission.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
                                         : 'Não disponível (dados insuficientes)'}
                                 </div>
                                 <div>
@@ -1503,9 +1502,30 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
     </div>
   )}
 
-  <div>
-    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Comissão ({formData.currency === 'USD' ? 'US$' : 'R$'}/sc)</label>
-    <input type="number" step="0.01" value={formData.commissionPerBag || ''} onChange={(e) => setFormData({ ...formData, commissionPerBag: Number(e.target.value) })} className="w-full border border-slate-300 rounded p-2" />
+  <div className="grid grid-cols-2 gap-3">
+    <div>
+      <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Comissão (R$/sc)</label>
+      <input
+        type="number"
+        step="0.01"
+        min="0"
+        value={formData.commissionPerBag ?? ''}
+        onChange={(e) => setFormData({
+          ...formData,
+          commissionPerBag: e.target.value === '' ? 0 : Number(e.target.value)
+        })}
+        className="w-full border border-slate-300 rounded p-2"
+      />
+    </div>
+    <div className="bg-slate-50 border border-slate-200 rounded p-2 flex flex-col justify-center">
+      <span className="text-[10px] font-bold text-slate-500 uppercase">Comissão Total (R$)</span>
+      <span className="text-sm font-bold text-emerald-700 tabular-nums mt-0.5">
+        R$ {((Number(formData.totalBags) || 0) * (Number(formData.commissionPerBag) || 0)).toLocaleString('pt-BR', {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2
+        })}
+      </span>
+    </div>
   </div>
 
   <div>

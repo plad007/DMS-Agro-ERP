@@ -443,8 +443,8 @@ export const Reports: React.FC<ReportsProps> = ({
               </div>
 
               <MultiSelectFilter
-                label="Moeda"
-                placeholder="BRL e USD"
+                label={activeTab === 'COMMISSIONS' ? 'Moeda da Mercadoria' : 'Moeda'}
+                placeholder={activeTab === 'COMMISSIONS' ? 'BRL e USD (mercadoria)' : 'BRL e USD'}
                 options={[
                   { value: 'BRL', label: 'BRL (R$)' },
                   { value: 'USD', label: 'USD (US$)' }

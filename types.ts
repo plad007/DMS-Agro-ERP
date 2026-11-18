@@ -70,8 +70,7 @@ export interface CommissionReceipt {
   contractId: string;
   receiptDate: string;
   amount: number;
-  currency: CurrencyCode;
-  exchangeRateApplied?: number;
+  currency: 'BRL';
   paymentMethod?: string;
   notes?: string;
   isReversed?: boolean;

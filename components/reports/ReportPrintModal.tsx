@@ -57,9 +57,6 @@ interface ReportPrintModalProps {
 const formatBRL = (v: number) =>
   `R$ ${v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-const formatUSD = (v: number) =>
-  `US$ ${v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-
 const formatQty = (v: number, unit: VolumeUnit) =>
   `${v.toLocaleString('pt-BR', { maximumFractionDigits: unit === 'TON' ? 2 : 0 })} ${unit === 'TON' ? 'ton' : 'scs'}`;
 
@@ -493,48 +490,52 @@ export const ReportPrintModal: React.FC<ReportPrintModalProps> = ({ payload, onC
       return (
         <div style={{ padding: '4mm' }}>
           {renderHeader('Relatório Gerencial Interno — Comissões de Corretagem', [
-            'Regra: Comissões devidas exclusivamente pelo Vendedor (Produtor). Recebimentos efetivos ainda não controlados neste módulo.'
+            'Regra: Comissões devidas exclusivamente pelo Vendedor (Produtor) e expressas sempre em Reais (BRL), sem conversão cambial. Recebimentos efetivos ainda não controlados neste módulo.'
           ])}
           {renderFiltersBar(payload.filtersSummary)}
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px', marginBottom: '12px' }}>
             <div style={{ border: '1px solid #cbd5e1', borderRadius: '4px', padding: '7px' }}>
-              <div style={{ fontSize: '8.5px', color: '#64748b', fontWeight: 700 }}>COMISSÃO CONTRATADA (BRL / USD)</div>
-              <div style={{ fontSize: '12px', fontWeight: 700, marginTop: '2px' }}>{formatBRL(analytics.contractedByCurrency.BRL)}</div>
-              <div style={{ fontSize: '10.5px', fontWeight: 600, color: '#2563eb' }}>{formatUSD(analytics.contractedByCurrency.USD)}</div>
+              <div style={{ fontSize: '8.5px', color: '#64748b', fontWeight: 700 }}>COMISSÃO CONTRATADA (R$)</div>
+              <div style={{ fontSize: '13px', fontWeight: 700, marginTop: '3px', color: '#0f172a' }}>{formatBRL(analytics.totalContractedBRL)}</div>
+              <div style={{ fontSize: '8.5px', color: '#64748b', marginTop: '2px' }}>{analytics.contractsCount} contratos · {analytics.totalBags.toLocaleString('pt-BR')} scs</div>
             </div>
             <div style={{ border: '1px solid #cbd5e1', borderRadius: '4px', padding: '7px' }}>
-              <div style={{ fontSize: '8.5px', color: '#64748b', fontWeight: 700 }}>PREVISTA NO PERÍODO (BRL / USD)</div>
-              <div style={{ fontSize: '12px', fontWeight: 700, marginTop: '2px' }}>{formatBRL(analytics.forecastTotalPeriodByCurrency.BRL)}</div>
-              <div style={{ fontSize: '10.5px', fontWeight: 600, color: '#2563eb' }}>{formatUSD(analytics.forecastTotalPeriodByCurrency.USD)}</div>
+              <div style={{ fontSize: '8.5px', color: '#64748b', fontWeight: 700 }}>PREVISTA NO PERÍODO (R$)</div>
+              <div style={{ fontSize: '13px', fontWeight: 700, marginTop: '3px', color: '#065f46' }}>{formatBRL(analytics.forecastTotalPeriodBRL)}</div>
+              <div style={{ fontSize: '8.5px', color: '#64748b', marginTop: '2px' }}>
+                Conf.: {formatBRL(analytics.forecastConfirmedBRL)} · Est.: {formatBRL(analytics.forecastEstimatedBRL)}
+              </div>
             </div>
             <div style={{ border: '1px solid #cbd5e1', borderRadius: '4px', padding: '7px' }}>
               <div style={{ fontSize: '8.5px', color: '#64748b', fontWeight: 700 }}>SEM VENCIMENTO DEFINIDO</div>
-              <div style={{ fontSize: '12px', fontWeight: 700, marginTop: '2px' }}>{formatBRL(analytics.undefinedDueByCurrency.BRL)}</div>
-              <div style={{ fontSize: '10.5px', fontWeight: 600, color: '#2563eb' }}>{formatUSD(analytics.undefinedDueByCurrency.USD)}</div>
+              <div style={{ fontSize: '13px', fontWeight: 700, marginTop: '3px', color: '#b45309' }}>{formatBRL(analytics.undefinedDueBRL)}</div>
+              <div style={{ fontSize: '8.5px', color: '#64748b', marginTop: '2px' }}>
+                Média pond.: {analytics.weightedAvgPerBagBRL !== null ? `${formatBRL(analytics.weightedAvgPerBagBRL)}/sc` : '-'}
+              </div>
             </div>
             <div style={{ border: '1px solid #cbd5e1', borderRadius: '4px', padding: '7px' }}>
               <div style={{ fontSize: '8.5px', color: '#64748b', fontWeight: 700 }}>RECEBIDO / SALDO A RECEBER</div>
               <div style={{ fontSize: '10px', fontWeight: 700, marginTop: '4px', color: '#b45309' }}>Recebimentos ainda não controlados</div>
-              <div style={{ fontSize: '8.5px', color: '#64748b' }}>{analytics.contractsCount} contratos considerados</div>
+              <div style={{ fontSize: '8.5px', color: '#64748b', marginTop: '2px' }}>Prop. embarque: {formatBRL(analytics.totalShippedBRL)}</div>
             </div>
           </div>
 
           {includeCharts && analytics.monthlySeries.length > 0 && (
             <SimplePrintBarSvg
-              title="Previsão Mensal de Comissões (BRL)"
+              title="Previsão Mensal de Comissões (R$)"
               items={analytics.monthlySeries.map((m) => ({
                 label: m.label,
                 value: m.totalBRL,
                 displayValue: m.totalBRL >= 1000 ? `${(m.totalBRL / 1000).toFixed(0)}k` : m.totalBRL.toFixed(0)
               }))}
-              barColor="#2563eb"
+              barColor="#059669"
             />
           )}
 
           {mode === 'SYNTHETIC' && (
             <div className="section-box">
-              <h2 style={{ fontSize: '11.5px', fontWeight: 700, margin: '0 0 6px 0' }}>Resumo Sintético por Produtor</h2>
+              <h2 style={{ fontSize: '11.5px', fontWeight: 700, margin: '0 0 6px 0' }}>Resumo Sintético por Produtor (R$)</h2>
               <table>
                 <thead>
                   <tr>
@@ -542,8 +543,9 @@ export const ReportPrintModal: React.FC<ReportPrintModalProps> = ({ payload, onC
                     <th>CPF/CNPJ</th>
                     <th className="num">Contratos</th>
                     <th className="num">Volume (scs)</th>
-                    <th className="num">Contratada (BRL)</th>
-                    <th className="num">Contratada (USD)</th>
+                    <th className="num">Contratada (R$)</th>
+                    <th className="num">Confirmada (R$)</th>
+                    <th className="num">Estimada (R$)</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -553,8 +555,9 @@ export const ReportPrintModal: React.FC<ReportPrintModalProps> = ({ payload, onC
                       <td>{p.doc || '-'}</td>
                       <td className="num">{p.contractsCount}</td>
                       <td className="num">{p.totalBags.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}</td>
-                      <td className="num">{formatBRL(p.totalBRL)}</td>
-                      <td className="num">{formatUSD(p.totalUSD)}</td>
+                      <td className="num" style={{ fontWeight: 700 }}>{formatBRL(p.totalBRL)}</td>
+                      <td className="num">{formatBRL(p.confirmedBRL)}</td>
+                      <td className="num">{formatBRL(p.estimatedBRL)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -564,7 +567,7 @@ export const ReportPrintModal: React.FC<ReportPrintModalProps> = ({ payload, onC
 
           {mode === 'MATRIX' && (
             <div>
-              <h2 style={{ fontSize: '11.5px', fontWeight: 700, margin: '0 0 6px 0' }}>Matriz Dinâmica de Comissões Previstas (BRL)</h2>
+              <h2 style={{ fontSize: '11.5px', fontWeight: 700, margin: '0 0 6px 0' }}>Matriz Dinâmica de Comissões Previstas (R$)</h2>
               <table>
                 <thead>
                   <tr>
@@ -572,8 +575,8 @@ export const ReportPrintModal: React.FC<ReportPrintModalProps> = ({ payload, onC
                     {matrix.monthKeys.map((mk) => (
                       <th key={mk} className="num">{formatMonthLabel(mk)}</th>
                     ))}
-                    <th className="num">Total BRL</th>
-                    <th className="num">Total USD</th>
+                    <th className="num">Total Previsto (R$)</th>
+                    <th className="num">Sem Venc. (R$)</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -582,22 +585,22 @@ export const ReportPrintModal: React.FC<ReportPrintModalProps> = ({ payload, onC
                       <td style={{ fontWeight: 700 }}>{r.label}</td>
                       {matrix.monthKeys.map((mk) => (
                         <td key={mk} className="num">
-                          {r.cellsBRL[mk]?.amount ? r.cellsBRL[mk].amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 }) : '-'}
+                          {r.cells[mk]?.amount ? r.cells[mk].amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 }) : '-'}
                         </td>
                       ))}
                       <td className="num" style={{ fontWeight: 700 }}>{formatBRL(r.totalBRL)}</td>
-                      <td className="num" style={{ fontWeight: 700 }}>{formatUSD(r.totalUSD)}</td>
+                      <td className="num">{r.undefinedBRL > 0 ? formatBRL(r.undefinedBRL) : '-'}</td>
                     </tr>
                   ))}
                 </tbody>
                 <tfoot>
                   <tr style={{ background: '#f1f5f9', fontWeight: 700 }}>
-                    <td>TOTAL GERAL</td>
+                    <td>TOTAL GERAL (R$)</td>
                     {matrix.monthKeys.map((mk) => (
                       <td key={mk} className="num">{(matrix.colTotalsBRL[mk] || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
                     ))}
                     <td className="num">{formatBRL(matrix.grandTotalBRL)}</td>
-                    <td className="num">{formatUSD(matrix.grandTotalUSD)}</td>
+                    <td className="num">{formatBRL(matrix.grandUndefinedBRL)}</td>
                   </tr>
                 </tfoot>
               </table>
@@ -606,7 +609,7 @@ export const ReportPrintModal: React.FC<ReportPrintModalProps> = ({ payload, onC
 
           {mode === 'ANALYTICAL' && (
             <div>
-              <h2 style={{ fontSize: '11.5px', fontWeight: 700, margin: '0 0 6px 0' }}>Visão Analítica de Comissões ({analytics.rows.length} contratos)</h2>
+              <h2 style={{ fontSize: '11.5px', fontWeight: 700, margin: '0 0 6px 0' }}>Visão Analítica de Comissões ({analytics.rows.length} contratos — Valores em R$)</h2>
               <table>
                 <thead>
                   <tr>
@@ -616,30 +619,27 @@ export const ReportPrintModal: React.FC<ReportPrintModalProps> = ({ payload, onC
                     {selectedColumns.product !== false && <th>Produto</th>}
                     {selectedColumns.crop !== false && <th>Safra</th>}
                     {selectedColumns.totalBags !== false && <th className="num">Vol. Contr. (scs)</th>}
-                    {selectedColumns.commissionPerBag !== false && <th className="num">Comissão/sc</th>}
-                    {selectedColumns.contractedCommission !== false && <th className="num">Comissão Total</th>}
+                    {selectedColumns.commissionPerBag !== false && <th className="num">Comissão (R$/sc)</th>}
+                    {selectedColumns.contractedCommission !== false && <th className="num">Comissão Total (R$)</th>}
                     {selectedColumns.dueDate !== false && <th>Previsão</th>}
                     {selectedColumns.financialStatus !== false && <th>Status / Recebimento</th>}
                   </tr>
                 </thead>
                 <tbody>
-                  {analytics.rows.map((r) => {
-                    const sym = r.currency === 'USD' ? 'US$' : 'R$';
-                    return (
-                      <tr key={r.contractId}>
-                        {selectedColumns.contractNumber !== false && <td style={{ fontWeight: 700 }}>{r.contractNumber}</td>}
-                        {selectedColumns.producerName !== false && <td>{r.producerName}</td>}
-                        {selectedColumns.farmName && <td>{r.farmName}</td>}
-                        {selectedColumns.product !== false && <td>{r.product}</td>}
-                        {selectedColumns.crop !== false && <td>{r.crop}</td>}
-                        {selectedColumns.totalBags !== false && <td className="num">{r.totalBags.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}</td>}
-                        {selectedColumns.commissionPerBag !== false && <td className="num">{sym} {r.commissionPerBag.toFixed(2)}</td>}
-                        {selectedColumns.contractedCommission !== false && <td className="num">{sym} {r.contractedCommission.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>}
-                        {selectedColumns.dueDate !== false && <td>{r.dueDate ? formatDateBR(r.dueDate) : 'Sem vencimento'}</td>}
-                        {selectedColumns.financialStatus !== false && <td>{r.financialStatusLabel}</td>}
-                      </tr>
-                    );
-                  })}
+                  {analytics.rows.map((r) => (
+                    <tr key={r.contractId}>
+                      {selectedColumns.contractNumber !== false && <td style={{ fontWeight: 700 }}>{r.contractNumber}</td>}
+                      {selectedColumns.producerName !== false && <td>{r.producerName}</td>}
+                      {selectedColumns.farmName && <td>{r.farmName}</td>}
+                      {selectedColumns.product !== false && <td>{r.product}</td>}
+                      {selectedColumns.crop !== false && <td>{r.crop}</td>}
+                      {selectedColumns.totalBags !== false && <td className="num">{r.totalBags.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}</td>}
+                      {selectedColumns.commissionPerBag !== false && <td className="num">R$ {r.commissionPerBag.toFixed(2)}</td>}
+                      {selectedColumns.contractedCommission !== false && <td className="num">R$ {r.contractedCommission.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>}
+                      {selectedColumns.dueDate !== false && <td>{r.dueDate ? formatDateBR(r.dueDate) : 'Sem vencimento'}</td>}
+                      {selectedColumns.financialStatus !== false && <td>{r.financialStatusLabel}</td>}
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>
