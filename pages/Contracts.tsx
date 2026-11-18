@@ -202,6 +202,15 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
 
   const normalizeDoc = (doc?: string) => (doc || '').replace(/\D/g, '');
   const normalizeName = (name?: string) => (name || '').trim().toLowerCase();
+  const normalizeContractStatusLabel = (status?: string): string => {
+    const clean = (status || '').trim().toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    if (clean === 'ASSINADO') return ContractStatus.SIGNED;
+    if (clean === 'RASCUNHO') return ContractStatus.DRAFT;
+    if (clean === 'AGUARDANDO ASSINATURA') return ContractStatus.AWAITING_SIGNATURE;
+    if (clean === 'CONCLUIDO') return ContractStatus.COMPLETED;
+    if (clean === 'CANCELADO') return ContractStatus.CANCELLED;
+    return status || ContractStatus.DRAFT;
+  };
 
   const findProducerForContract = (contract: Partial<Contract>): Producer | undefined => {
       if (contract.sellerId) {
@@ -718,7 +727,7 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
           if (reportFilters.product && c.product !== reportFilters.product) return false;
           if (reportFilters.seller && c.sellerName !== reportFilters.seller) return false;
           if (reportFilters.buyer && c.buyerName !== reportFilters.buyer) return false;
-          if (reportFilters.status && c.status !== reportFilters.status) return false;
+          if (reportFilters.status && normalizeContractStatusLabel(c.status) !== reportFilters.status) return false;
           if (reportFilters.freight && c.freightType !== reportFilters.freight) return false;
           if (reportFilters.currency && c.currency !== reportFilters.currency) return false;
           
@@ -1108,13 +1117,20 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
                                 </div>
                             </td>
                             <td className="px-6 py-4 text-center">
-                                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                                    contract.status === ContractStatus.SIGNED ? 'bg-emerald-100 text-emerald-800' :
-                                    contract.status === ContractStatus.AWAITING_SIGNATURE ? 'bg-amber-100 text-amber-800' :
-                                    'bg-slate-100 text-slate-600'
-                                }`}>
-                                    {contract.status}
-                                </span>
+                                {(() => {
+                                    const normalizedStatus = normalizeContractStatusLabel(contract.status);
+                                    return (
+                                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                                            normalizedStatus === ContractStatus.SIGNED ? 'bg-emerald-100 text-emerald-800' :
+                                            normalizedStatus === ContractStatus.COMPLETED ? 'bg-blue-100 text-blue-800' :
+                                            normalizedStatus === ContractStatus.CANCELLED ? 'bg-red-100 text-red-700' :
+                                            normalizedStatus === ContractStatus.AWAITING_SIGNATURE ? 'bg-amber-100 text-amber-800' :
+                                            'bg-slate-100 text-slate-600'
+                                        }`}>
+                                            {normalizedStatus}
+                                        </span>
+                                    );
+                                })()}
                             </td>
                             <td className="px-6 py-4 text-right">
                                 <div className="flex justify-end items-center gap-2">
@@ -1580,9 +1596,11 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
                                 <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Status</label>
                                 <select value={reportFilters.status} onChange={e => setReportFilters({...reportFilters, status: e.target.value})} className="w-full border rounded p-2 text-sm bg-white">
                                     <option value="">Todos</option>
-                                    <option value="RASCUNHO">Rascunho</option>
-                                    <option value="AGUARDANDO ASSINATURA">Aguardando Assinatura</option>
-                                    <option value="ASSINADO">Assinado</option>
+                                    <option value={ContractStatus.DRAFT}>Rascunho</option>
+                                    <option value={ContractStatus.AWAITING_SIGNATURE}>Aguardando Assinatura</option>
+                                    <option value={ContractStatus.SIGNED}>Assinado</option>
+                                    <option value={ContractStatus.COMPLETED}>Concluído</option>
+                                    <option value={ContractStatus.CANCELLED}>Cancelado</option>
                                 </select>
                             </div>
                             <div>

@@ -8,12 +8,76 @@ export enum ContractStatus {
   DRAFT = 'Rascunho',
   AWAITING_SIGNATURE = 'Aguardando Assinatura',
   SIGNED = 'Assinado',
-  COMPLETED = 'Concluído'
+  COMPLETED = 'Concluído',
+  CANCELLED = 'Cancelado'
 }
+
+export type NormalizedContractStatus =
+  | 'Rascunho'
+  | 'Aguardando Assinatura'
+  | 'Assinado'
+  | 'Concluído'
+  | 'Cancelado'
+  | 'Outro';
 
 export type FreightType = 'CIF' | 'FOB';
 
 export type PaymentType = 'DATA_FIXA' | 'SOB_RODAS' | 'POS_RETIRADA';
+
+export type CurrencyCode = 'BRL' | 'USD';
+
+export interface DataLoadIntegrity {
+  table: string;
+  loadedCount: number;
+  expectedCount: number | null;
+  isComplete: boolean;
+  error?: string;
+}
+
+export interface SystemDataIntegrity {
+  contracts: DataLoadIntegrity;
+  shipments: DataLoadIntegrity;
+  producers: DataLoadIntegrity;
+  buyers: DataLoadIntegrity;
+  hasIncompleteData: boolean;
+}
+
+export interface EconomicGroup {
+  id: string;
+  name: string;
+  notes?: string;
+  producerIds: string[];
+  createdAt?: string;
+}
+
+export type CommissionFinancialStatus =
+  | 'RECEBIDA'
+  | 'PARCIAL'
+  | 'PREVISTA_CONFIRMADA'
+  | 'PREVISTA_ESTIMADA'
+  | 'AGUARDANDO_EMBARQUE'
+  | 'SEM_VENCIMENTO'
+  | 'CANCELADA';
+
+export type ForecastOrigin =
+  | 'CONFIRMED'
+  | 'ESTIMATED_LEGACY'
+  | 'ESTIMATED_BY_SHIPMENT'
+  | 'UNDEFINED';
+
+export interface CommissionReceipt {
+  id: string;
+  contractId: string;
+  receiptDate: string;
+  amount: number;
+  currency: CurrencyCode;
+  exchangeRateApplied?: number;
+  paymentMethod?: string;
+  notes?: string;
+  isReversed?: boolean;
+  reversedReason?: string;
+  createdAt?: string;
+}
 
 export interface BankAccount {
     bankName: string;

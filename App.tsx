@@ -5,10 +5,16 @@ import { Dashboard } from './pages/Dashboard';
 import { Contracts } from './pages/Contracts';
 import { Logistics } from './pages/Logistics';
 import { Registries } from './pages/Registries';
-import { Reports } from './pages/Reports'; // NEW IMPORT
+import { Reports } from './pages/Reports';
 import { Settings } from './pages/Settings';
-import { getContracts, getMarketData, getShipments } from './services/mockService';
-import { Contract, Shipment, MarketData } from './types';
+import {
+  getContractsWithIntegrity,
+  getMarketData,
+  getShipmentsWithIntegrity,
+  getProducersWithIntegrity,
+  getBuyersWithIntegrity
+} from './services/mockService';
+import { Contract, Shipment, MarketData, Producer, Buyer, SystemDataIntegrity } from './types';
 
 export default function App() {
   const activePageStorage = sessionStorage.getItem('dms_active_page') || 'dashboard';
@@ -16,6 +22,9 @@ export default function App() {
   
   const [contracts, setContracts] = useState<Contract[]>([]);
   const [shipments, setShipments] = useState<Shipment[]>([]);
+  const [producers, setProducers] = useState<Producer[]>([]);
+  const [buyers, setBuyers] = useState<Buyer[]>([]);
+  const [dataIntegrity, setDataIntegrity] = useState<SystemDataIntegrity | undefined>(undefined);
   const [marketData, setMarketData] = useState<MarketData>({ usd: 0, cbotSoy: 0, cbotCorn: 0 });
   const [loading, setLoading] = useState(true);
 
@@ -27,12 +36,27 @@ export default function App() {
   const refreshData = async () => {
     setLoading(true);
     try {
-      const [contractsData, shipmentsData] = await Promise.all([
-        getContracts(),
-        getShipments()
+      const [contractsRes, shipmentsRes, producersRes, buyersRes] = await Promise.all([
+        getContractsWithIntegrity(),
+        getShipmentsWithIntegrity(),
+        getProducersWithIntegrity(),
+        getBuyersWithIntegrity()
       ]);
-      setContracts(contractsData);
-      setShipments(shipmentsData);
+      setContracts(contractsRes.data);
+      setShipments(shipmentsRes.data);
+      setProducers(producersRes.data);
+      setBuyers(buyersRes.data);
+      setDataIntegrity({
+        contracts: contractsRes.integrity,
+        shipments: shipmentsRes.integrity,
+        producers: producersRes.integrity,
+        buyers: buyersRes.integrity,
+        hasIncompleteData:
+          !contractsRes.integrity.isComplete ||
+          !shipmentsRes.integrity.isComplete ||
+          !producersRes.integrity.isComplete ||
+          !buyersRes.integrity.isComplete
+      });
       setMarketData(getMarketData()); // Still sync mock for now
     } catch (error) {
       console.error("Failed to load data", error);
@@ -61,7 +85,15 @@ export default function App() {
       case 'contracts':
         return <Contracts contracts={contracts} marketData={marketData} onUpdate={refreshData} />;
       case 'reports':
-        return <Reports contracts={contracts} />;
+        return (
+          <Reports
+            contracts={contracts}
+            shipments={shipments}
+            producers={producers}
+            buyers={buyers}
+            dataIntegrity={dataIntegrity}
+          />
+        );
       case 'logistics':
         return <Logistics contracts={contracts} shipments={shipments} onUpdate={refreshData} />;
       case 'registries':

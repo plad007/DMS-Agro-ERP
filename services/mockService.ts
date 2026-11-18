@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import { Contract, Shipment, MarketData, Producer, Buyer, BankAccount, PaymentType, Farm } from '../types';
+import { Contract, Shipment, MarketData, Producer, Buyer, BankAccount, PaymentType, Farm, DataLoadIntegrity } from '../types';
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -127,30 +127,161 @@ export const getMarketData = (): MarketData => ({
     usd: 5.15, cbotSoy: 1180.50, cbotCorn: 440.25
 });
 
+interface PaginatedOrderClause {
+    column: string;
+    ascending: boolean;
+}
+
+const DEFAULT_PAGE_SIZE = 1000;
+
+async function fetchAllPaginated<T = any>(
+    table: string,
+    selectClause: string,
+    orders: PaginatedOrderClause[],
+    filters?: (query: any) => any
+): Promise<{ rows: T[]; integrity: DataLoadIntegrity }> {
+    const deduped = new Map<string, T>();
+    const fallbackRows: T[] = [];
+    let offset = 0;
+    let expectedCount: number | null = null;
+
+    while (true) {
+        let query = supabase
+            .from(table)
+            .select(selectClause, { count: 'exact' });
+
+        if (filters) {
+            query = filters(query);
+        }
+
+        for (const ord of orders) {
+            query = query.order(ord.column, { ascending: ord.ascending });
+        }
+
+        query = query.range(offset, offset + DEFAULT_PAGE_SIZE - 1);
+
+        const { data, error, count } = await query;
+
+        if (error) {
+            const loadedRows = deduped.size > 0 ? Array.from(deduped.values()) : fallbackRows;
+            return {
+                rows: loadedRows,
+                integrity: {
+                    table,
+                    loadedCount: loadedRows.length,
+                    expectedCount,
+                    isComplete: false,
+                    error: `Falha ao carregar ${table} (lote offset ${offset}): ${error.message}`
+                }
+            };
+        }
+
+        if (typeof count === 'number') {
+            expectedCount = count;
+        }
+
+        const batch = (data || []) as any[];
+        for (const item of batch) {
+            if (item && typeof item.id === 'string' && item.id) {
+                if (!deduped.has(item.id)) {
+                    deduped.set(item.id, item as T);
+                }
+            } else {
+                fallbackRows.push(item as T);
+            }
+        }
+
+        if (batch.length < DEFAULT_PAGE_SIZE) {
+            break;
+        }
+
+        offset += DEFAULT_PAGE_SIZE;
+    }
+
+    const rows = deduped.size > 0 ? Array.from(deduped.values()) : fallbackRows;
+    const isComplete = expectedCount === null ? true : rows.length >= expectedCount;
+
+    return {
+        rows,
+        integrity: {
+            table,
+            loadedCount: rows.length,
+            expectedCount,
+            isComplete,
+            error: !isComplete
+                ? `Divergência na leitura de ${table}: carregados ${rows.length} de ${expectedCount} registros disponíveis no banco.`
+                : undefined
+        }
+    };
+}
+
+export const getProducersWithIntegrity = async (): Promise<{ data: Producer[]; integrity: DataLoadIntegrity }> => {
+    const { rows, integrity } = await fetchAllPaginated<any>(
+        'producers',
+        '*, farms(*)',
+        [{ column: 'name', ascending: true }, { column: 'id', ascending: true }]
+    );
+    if (integrity.error) {
+        console.error('Error fetching producers:', integrity.error);
+    }
+    return { data: rows.map(mapProducerFromDB), integrity };
+};
+
 export const getProducers = async (): Promise<Producer[]> => {
-    const { data, error } = await supabase.from('producers').select('*, farms(*)');
-    if (error) { console.error('Error fetching producers:', error); return []; }
-    return data.map(mapProducerFromDB);
+    const { data } = await getProducersWithIntegrity();
+    return data;
+};
+
+export const getBuyersWithIntegrity = async (): Promise<{ data: Buyer[]; integrity: DataLoadIntegrity }> => {
+    const { rows, integrity } = await fetchAllPaginated<any>(
+        'buyers',
+        '*',
+        [{ column: 'name', ascending: true }, { column: 'id', ascending: true }]
+    );
+    if (integrity.error) {
+        console.error('Error fetching buyers:', integrity.error);
+    }
+    return { data: rows.map(mapBuyerFromDB), integrity };
 };
 
 export const getBuyers = async (): Promise<Buyer[]> => {
-    const { data, error } = await supabase.from('buyers').select('*');
-    if (error) { console.error('Error fetching buyers:', error); return []; }
-    return data.map(mapBuyerFromDB);
+    const { data } = await getBuyersWithIntegrity();
+    return data;
+};
+
+export const getContractsWithIntegrity = async (): Promise<{ data: Contract[]; integrity: DataLoadIntegrity }> => {
+    const { rows, integrity } = await fetchAllPaginated<any>(
+        'contracts',
+        '*',
+        [{ column: 'created_at', ascending: false }, { column: 'id', ascending: true }]
+    );
+    if (integrity.error) {
+        console.error('Error fetching contracts:', integrity.error);
+    }
+    return { data: rows.map(mapContractFromDB), integrity };
 };
 
 export const getContracts = async (): Promise<Contract[]> => {
-    const { data, error } = await supabase.from('contracts').select('*').order('created_at', { ascending: false });
-    if (error) { console.error('Error fetching contracts:', error); return []; }
-    return data.map(mapContractFromDB);
+    const { data } = await getContractsWithIntegrity();
+    return data;
+};
+
+export const getShipmentsWithIntegrity = async (contractId?: string): Promise<{ data: Shipment[]; integrity: DataLoadIntegrity }> => {
+    const { rows, integrity } = await fetchAllPaginated<any>(
+        'shipments',
+        '*',
+        [{ column: 'delivery_date', ascending: false }, { column: 'id', ascending: true }],
+        contractId ? (q) => q.eq('contract_id', contractId) : undefined
+    );
+    if (integrity.error) {
+        console.error('Error fetching shipments:', integrity.error);
+    }
+    return { data: rows.map(mapShipmentFromDB), integrity };
 };
 
 export const getShipments = async (contractId?: string): Promise<Shipment[]> => {
-    let query = supabase.from('shipments').select('*').order('delivery_date', { ascending: false });
-    if (contractId) query = query.eq('contract_id', contractId);
-    const { data, error } = await query;
-    if (error) { console.error('Error fetching shipments:', error); return []; }
-    return data.map(mapShipmentFromDB);
+    const { data } = await getShipmentsWithIntegrity(contractId);
+    return data;
 };
 
 export const saveProducer = async (producer: Producer): Promise<Producer | null> => {
