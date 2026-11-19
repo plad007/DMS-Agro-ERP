@@ -28,7 +28,10 @@ import {
   formatDateBR
 } from '../../services/reportsAnalytics';
 import { REPORTS_SQL_PROPOSALS } from '../../services/reportsSqlProposals';
-import { ExternalProducerSections } from '../../services/reportsExport';
+import {
+  ExternalLogisticsSections,
+  ExternalProducerSections
+} from '../../services/reportsExport';
 
 // 1) CONTRACT DRILL-DOWN MODAL
 interface ContractDrillDownModalProps {
@@ -749,6 +752,134 @@ export const ExternalProducerConfigModal: React.FC<ExternalProducerConfigModalPr
           <div className="space-y-2">
             <p className="text-xs font-bold uppercase tracking-wider text-slate-500">
               Seções incluídas no documento
+            </p>
+            <div className="divide-y divide-slate-100 border border-slate-200 rounded-lg">
+              {sectionItems.map((item) => (
+                <label
+                  key={item.key}
+                  className="flex items-start gap-3 px-3.5 py-2.5 cursor-pointer hover:bg-slate-50"
+                >
+                  <input
+                    type="checkbox"
+                    checked={sections[item.key]}
+                    onChange={() => toggleSection(item.key)}
+                    className="mt-0.5 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                  />
+                  <span>
+                    <span className="block text-xs font-semibold text-slate-800">{item.label}</span>
+                    <span className="block text-[11px] text-slate-500">{item.desc}</span>
+                  </span>
+                </label>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="px-6 py-4 bg-slate-50 border-t border-slate-200 flex flex-wrap items-center justify-end gap-2">
+          <button
+            type="button"
+            onClick={onExportCsv}
+            className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold border border-slate-300 bg-white hover:bg-slate-100 text-slate-700 rounded-lg whitespace-nowrap"
+          >
+            <FileText className="w-3.5 h-3.5" /> CSV
+          </button>
+          <button
+            type="button"
+            onClick={onExportXlsx}
+            className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold border border-slate-300 bg-white hover:bg-slate-100 text-slate-700 rounded-lg whitespace-nowrap"
+          >
+            <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-700" /> Excel (.xlsx)
+          </button>
+          <button
+            type="button"
+            onClick={onPrintPdf}
+            className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg whitespace-nowrap"
+          >
+            <Printer className="w-3.5 h-3.5" /> Imprimir / Salvar PDF
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// 5) EXTERNAL LOGISTICS PRODUCER REPORT CONFIG MODAL
+interface ExternalLogisticsConfigModalProps {
+  producerOrGroupTitle: string;
+  producerDocsLabel: string;
+  referenceDateLabel: string;
+  contractsCount: number;
+  sections: ExternalLogisticsSections;
+  onChangeSections: (next: ExternalLogisticsSections) => void;
+  onPrintPdf: () => void;
+  onExportCsv: () => void;
+  onExportXlsx: () => void;
+  onClose: () => void;
+}
+
+export const ExternalLogisticsConfigModal: React.FC<ExternalLogisticsConfigModalProps> = ({
+  producerOrGroupTitle,
+  producerDocsLabel,
+  referenceDateLabel,
+  contractsCount,
+  sections,
+  onChangeSections,
+  onPrintPdf,
+  onExportCsv,
+  onExportXlsx,
+  onClose
+}) => {
+  const toggleSection = (key: keyof ExternalLogisticsSections) => {
+    onChangeSections({ ...sections, [key]: !sections[key] });
+  };
+
+  const sectionItems: Array<{ key: keyof ExternalLogisticsSections; label: string; desc: string }> = [
+    { key: 'executiveSummary', label: 'Resumo Logístico', desc: 'Volume contratado, entregue registrado, saldo pendente e FOB/CIF.' },
+    { key: 'horizons', label: 'Horizontes Futuros (15/30/60/90d)', desc: 'Compromissos acumulados separando quinzenas específicas e janelas amplas.' },
+    { key: 'charts', label: 'Gráfico de Programação (PDF)', desc: 'Visualização dos volumes programados por período.' },
+    { key: 'scheduleTable', label: 'Agenda por Quinzena / Período', desc: 'Tabela consolidada com datas reais de embarque e retirada.' },
+    { key: 'byProductCrop', label: 'Volumes por Cultura e Safra', desc: 'Totais contratados, entregues e saldo por produto e safra.' },
+    { key: 'byFarm', label: 'Volumes por Fazenda e Local', desc: 'Distribuição logística por propriedade rural e local de embarque.' },
+    { key: 'analyticalContracts', label: 'Relação Detalhada de Contratos', desc: 'Lista dos contratos e situação de entrega (sem comissões ou terceiros).' }
+  ];
+
+  return (
+    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+      <div className="bg-white border border-slate-200 rounded-xl shadow-2xl w-full max-w-xl overflow-hidden">
+        <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
+          <div>
+            <h3 className="text-base font-bold text-slate-900">
+              Agenda Logística Externa para Produtor
+            </h3>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Documento isolado: contém exclusivamente contratos e embarques do produtor/grupo selecionado.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-200/70"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="p-6 space-y-5 max-h-[75vh] overflow-y-auto">
+          <div className="border border-emerald-200 bg-emerald-50/70 rounded-lg p-3.5 text-xs space-y-1">
+            <p className="font-bold text-emerald-950">{producerOrGroupTitle}</p>
+            {producerDocsLabel && <p className="text-emerald-800">Documento(s): {producerDocsLabel}</p>}
+            <p className="text-emerald-800">
+              Referência: {referenceDateLabel} · {contractsCount} contrato(s) incluído(s)
+            </p>
+            <p className="text-[11px] text-emerald-700 pt-1 flex items-center gap-1.5">
+              <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
+              Isolamento garantido: sem comissões, margens, dados bancários ou registros de terceiros.
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <p className="text-xs font-bold uppercase tracking-wider text-slate-500">
+              Seções incluídas na emissão
             </p>
             <div className="divide-y divide-slate-100 border border-slate-200 rounded-lg">
               {sectionItems.map((item) => (

@@ -9,6 +9,12 @@ import {
   formatDateBR,
   formatMonthLabel
 } from './reportsAnalytics';
+import {
+  LogisticsAnalyticsSummary,
+  LogisticsContractRow,
+  LogisticsMatrixResult,
+  ProducerLogisticsExternalView
+} from './logisticsScheduleAnalytics';
 
 export interface ExportSheetData {
   sheetName: string;
@@ -438,6 +444,334 @@ export const buildExternalProducerExportSheets = (
         c.priceStatus === 'FIXED_VALID' ? Number(c.grossValue.toFixed(2)) : '-',
         c.status
       ])
+    });
+  }
+
+  return sheets;
+};
+
+// --- LOGISTICS SCHEDULING EXPORTS (INTERNAL & STRICT PRODUCER ISOLATION) ---
+
+export interface ExternalLogisticsSections {
+  executiveSummary: boolean;
+  horizons: boolean;
+  scheduleTable: boolean;
+  byProductCrop: boolean;
+  byFarm: boolean;
+  ganttSummary: boolean;
+  analyticalContracts: boolean;
+  charts: boolean;
+}
+
+export const DEFAULT_EXTERNAL_LOGISTICS_SECTIONS: ExternalLogisticsSections = {
+  executiveSummary: true,
+  horizons: true,
+  scheduleTable: true,
+  byProductCrop: true,
+  byFarm: true,
+  ganttSummary: true,
+  analyticalContracts: true,
+  charts: true
+};
+
+export const buildLogisticsInternalExportSheets = (params: {
+  summary: LogisticsAnalyticsSummary;
+  matrix: LogisticsMatrixResult;
+  analyticalRows: LogisticsContractRow[];
+  unit: VolumeUnit;
+  mode: 'SYNTHETIC' | 'ANALYTICAL' | 'TRACKING' | 'ALL';
+  selectedColumns?: Record<string, boolean>;
+}): ExportSheetData[] => {
+  const { summary, matrix, analyticalRows, unit, mode, selectedColumns } = params;
+  const unitLabel = unit === 'TON' ? 'ton' : 'scs';
+  const sheets: ExportSheetData[] = [];
+
+  if (mode === 'SYNTHETIC' || mode === 'ALL') {
+    sheets.push({
+      sheetName: 'Matriz_Programacao',
+      headers: [
+        'Agrupamento',
+        ...matrix.columns.map((c) => c.label),
+        `Com Janela Definida (${unitLabel})`,
+        `Janelas Abertas (${unitLabel})`,
+        `Total (${unitLabel})`,
+        'Part. (%)'
+      ],
+      rows: [
+        ...matrix.rows.map((r) => [
+          r.label,
+          ...matrix.columns.map((c) => Number((r.cells[c.key]?.value || 0).toFixed(2))),
+          Number(r.definedTotal.toFixed(2)),
+          Number(r.openWindowTotal.toFixed(2)),
+          Number(r.total.toFixed(2)),
+          Number(r.sharePct.toFixed(2))
+        ]),
+        [
+          matrix.isSimulated ? 'TOTAL GERAL (SIMULADO)' : 'TOTAL GERAL',
+          ...matrix.columns.map((c) => Number((matrix.colTotals[c.key] || 0).toFixed(2))),
+          Number(matrix.grandDefinedTotal.toFixed(2)),
+          Number(matrix.grandOpenWindowTotal.toFixed(2)),
+          Number(matrix.grandTotal.toFixed(2)),
+          100
+        ]
+      ]
+    });
+
+    sheets.push({
+      sheetName: 'Horizontes_Futuros',
+      headers: [
+        'Horizonte (Acumulado)',
+        'Data Limite',
+        'Contratos',
+        `Quinzena/Janela Definida (${unitLabel})`,
+        `Janelas Coincidentes (${unitLabel})`,
+        `Total Saldo Coincidente (${unitLabel})`,
+        `FOB (${unitLabel})`,
+        `CIF (${unitLabel})`
+      ],
+      rows: summary.horizons.map((h) => [
+        `Próximos ${h.days} dias`,
+        formatDateBR(h.horizonEndDate),
+        h.contractsCount,
+        Number(h.definedVolume.toFixed(2)),
+        Number(h.coincidentVolume.toFixed(2)),
+        Number(h.totalOverlappingVolume.toFixed(2)),
+        Number(h.fobVolume.toFixed(2)),
+        Number(h.cifVolume.toFixed(2))
+      ])
+    });
+  }
+
+  if (mode === 'ANALYTICAL' || mode === 'ALL') {
+    const colDefs: Array<{
+      key: string;
+      header: string;
+      get: (r: LogisticsContractRow) => string | number;
+    }> = [
+      { key: 'contractNumber', header: 'Contrato', get: (r) => r.contractNumber },
+      { key: 'producerName', header: 'Produtor', get: (r) => r.producerName },
+      { key: 'farmName', header: 'Fazenda', get: (r) => r.farmName },
+      { key: 'product', header: 'Produto', get: (r) => r.product },
+      { key: 'crop', header: 'Safra', get: (r) => r.crop },
+      { key: 'buyerName', header: 'Destino Comercial (Comprador)', get: (r) => r.buyerName },
+      { key: 'closingDate', header: 'Fechamento', get: (r) => formatDateBR(r.closingDate) },
+      { key: 'freightType', header: 'Frete', get: (r) => r.freightType },
+      { key: 'pickupLocation', header: 'Local de Embarque', get: (r) => r.pickupLocation },
+      { key: 'startDate', header: 'Início Contratado', get: (r) => formatDateBR(r.window.startIso) },
+      { key: 'endDate', header: 'Fim Contratado', get: (r) => formatDateBR(r.window.endIso) },
+      { key: 'periodLabel', header: 'Período Formatado', get: (r) => r.window.periodLabel },
+      { key: 'contractedVolume', header: `Vol. Contratado (${unitLabel})`, get: (r) => Number(r.contractedVolume.toFixed(2)) },
+      { key: 'deliveredVolume', header: `Vol. Entregue Reg. (${unitLabel})`, get: (r) => Number(r.deliveredVolume.toFixed(2)) },
+      { key: 'balanceVolume', header: `Saldo Pendente (${unitLabel})`, get: (r) => Number(r.balanceVolume.toFixed(2)) },
+      { key: 'deliveredPct', header: '% Entregue', get: (r) => Number(r.deliveredPct.toFixed(1)) },
+      { key: 'logisticsStatus', header: 'Situação Entrega', get: (r) => r.logisticsStatusLabel }
+    ];
+
+    const activeCols = selectedColumns
+      ? colDefs.filter((c) => selectedColumns[c.key] !== false)
+      : colDefs;
+
+    sheets.push({
+      sheetName: 'Analitico_Programacao',
+      headers: activeCols.map((c) => c.header),
+      rows: analyticalRows.map((r) => activeCols.map((c) => c.get(r)))
+    });
+  }
+
+  if (mode === 'TRACKING' || mode === 'ALL') {
+    sheets.push({
+      sheetName: 'Embarques_Realizados',
+      headers: [
+        'Mês Embarque (delivery_date)',
+        `Volume Embarcado (${unitLabel})`,
+        'Qtd. Romaneios',
+        'Contratos Atendidos'
+      ],
+      rows: summary.shipmentTimeline.map((s) => [
+        s.label,
+        Number(s.deliveredVolume.toFixed(2)),
+        s.shipmentsCount,
+        s.contractsCount
+      ])
+    });
+
+    sheets.push({
+      sheetName: 'Concentracao_Locais',
+      headers: [
+        'Local de Embarque',
+        'Contratos',
+        `Contratado (${unitLabel})`,
+        `Entregue (${unitLabel})`,
+        `Saldo (${unitLabel})`,
+        `FOB (${unitLabel})`,
+        `CIF (${unitLabel})`
+      ],
+      rows: summary.byPickupLocation.map((p) => [
+        p.label,
+        p.contractsCount,
+        Number(p.contractedVolume.toFixed(2)),
+        Number(p.deliveredVolume.toFixed(2)),
+        Number(p.balanceVolume.toFixed(2)),
+        Number(p.fobVolume.toFixed(2)),
+        Number(p.cifVolume.toFixed(2))
+      ])
+    });
+  }
+
+  return sheets;
+};
+
+// STRICT PRODUCER ISOLATION: NEVER includes other producers, commissions, margins, bank accounts, or public links
+export const buildLogisticsExternalExportSheets = (params: {
+  producerView: ProducerLogisticsExternalView;
+  sections: ExternalLogisticsSections;
+  selectedAnalyticalColumns?: Record<string, boolean>;
+}): ExportSheetData[] => {
+  const { producerView, sections, selectedAnalyticalColumns } = params;
+  const unitLabel = producerView.unit === 'TON' ? 'ton' : 'scs';
+  const sheets: ExportSheetData[] = [];
+
+  if (sections.executiveSummary) {
+    sheets.push({
+      sheetName: 'Resumo_Logistico',
+      headers: ['Indicador', 'Valor'],
+      rows: [
+        ['Produtor / Grupo', producerView.targetTitle],
+        ['Data de Referência', formatDateBR(producerView.referenceDate)],
+        ['Contratos no Escopo', producerView.contractsCount],
+        [`Volume Contratado (${unitLabel})`, Number(producerView.totalContracted.toFixed(2))],
+        [`Volume Entregue Registrado (${unitLabel})`, Number(producerView.totalDelivered.toFixed(2))],
+        [`Saldo Conhecido a Entregar (${unitLabel})`, Number(producerView.totalBalance.toFixed(2))],
+        ['Percentual Entregue (%)', Number(producerView.deliveredPct.toFixed(1))],
+        [`Modalidade FOB (${unitLabel})`, Number(producerView.fobContracted.toFixed(2))],
+        [`Modalidade CIF (${unitLabel})`, Number(producerView.cifContracted.toFixed(2))]
+      ]
+    });
+  }
+
+  if (sections.horizons) {
+    sheets.push({
+      sheetName: 'Horizontes_Entrega',
+      headers: [
+        'Horizonte (Acumulado)',
+        'Até',
+        'Contratos',
+        `Janela Específica (${unitLabel})`,
+        `Janelas Coincidentes (${unitLabel})`,
+        `Saldo Total Coincidente (${unitLabel})`
+      ],
+      rows: producerView.horizons.map((h) => [
+        `Próximos ${h.days} dias`,
+        formatDateBR(h.horizonEndDate),
+        h.contractsCount,
+        Number(h.definedVolume.toFixed(2)),
+        Number(h.coincidentVolume.toFixed(2)),
+        Number(h.totalOverlappingVolume.toFixed(2))
+      ])
+    });
+  }
+
+  if (sections.scheduleTable) {
+    sheets.push({
+      sheetName: 'Programacao_Periodos',
+      headers: [
+        'Período / Quinzena Contratada',
+        'Datas Reais',
+        'Tipo Janela',
+        'Contratos',
+        `Contratado (${unitLabel})`,
+        `Entregue Reg. (${unitLabel})`,
+        `Saldo (${unitLabel})`,
+        `FOB (${unitLabel})`,
+        `CIF (${unitLabel})`
+      ],
+      rows: producerView.scheduleRows.map((s) => [
+        s.periodLabel,
+        s.exactDatesLabel,
+        s.isExactSchedule ? 'Período definido' : 'Janela aberta',
+        s.contractsCount,
+        Number(s.contractedVolume.toFixed(2)),
+        Number(s.deliveredVolume.toFixed(2)),
+        Number(s.balanceVolume.toFixed(2)),
+        Number(s.fobVolume.toFixed(2)),
+        Number(s.cifVolume.toFixed(2))
+      ])
+    });
+  }
+
+  if (sections.byProductCrop) {
+    sheets.push({
+      sheetName: 'Volumes_Cultura_Safra',
+      headers: [
+        'Produto',
+        'Safra',
+        'Contratos',
+        `Contratado (${unitLabel})`,
+        `Entregue Reg. (${unitLabel})`,
+        `Saldo (${unitLabel})`
+      ],
+      rows: producerView.byProductAndCrop.map((p) => [
+        p.product,
+        p.crop,
+        p.contractsCount,
+        Number(p.contractedVolume.toFixed(2)),
+        Number(p.deliveredVolume.toFixed(2)),
+        Number(p.balanceVolume.toFixed(2))
+      ])
+    });
+  }
+
+  if (sections.byFarm) {
+    sheets.push({
+      sheetName: 'Volumes_Fazenda_Local',
+      headers: [
+        'Fazenda',
+        'Local de Embarque',
+        'Contratos',
+        `Contratado (${unitLabel})`,
+        `Entregue Reg. (${unitLabel})`,
+        `Saldo (${unitLabel})`
+      ],
+      rows: producerView.byFarm.map((f) => [
+        f.farmName,
+        f.pickupLocation,
+        f.contractsCount,
+        Number(f.contractedVolume.toFixed(2)),
+        Number(f.deliveredVolume.toFixed(2)),
+        Number(f.balanceVolume.toFixed(2))
+      ])
+    });
+  }
+
+  if (sections.analyticalContracts) {
+    const colDefs: Array<{
+      key: string;
+      header: string;
+      get: (c: ProducerLogisticsExternalView['contracts'][number]) => string | number;
+    }> = [
+      { key: 'contractNumber', header: 'Contrato', get: (c) => c.contractNumber },
+      { key: 'product', header: 'Produto', get: (c) => c.product },
+      { key: 'crop', header: 'Safra', get: (c) => c.crop },
+      { key: 'farmName', header: 'Fazenda', get: (c) => c.farmName },
+      { key: 'pickupLocation', header: 'Local de Embarque', get: (c) => c.pickupLocation },
+      { key: 'freightType', header: 'Frete', get: (c) => c.freightType },
+      { key: 'buyerName', header: 'Comprador / Destino', get: (c) => c.buyerName },
+      { key: 'periodLabel', header: 'Período Contratado', get: (c) => c.periodLabel },
+      { key: 'exactDatesLabel', header: 'Datas Reais', get: (c) => c.exactDatesLabel },
+      { key: 'contractedVolume', header: `Contratado (${unitLabel})`, get: (c) => Number(c.contractedVolume.toFixed(2)) },
+      { key: 'deliveredVolume', header: `Entregue Reg. (${unitLabel})`, get: (c) => Number(c.deliveredVolume.toFixed(2)) },
+      { key: 'balanceVolume', header: `Saldo (${unitLabel})`, get: (c) => Number(c.balanceVolume.toFixed(2)) },
+      { key: 'logisticsStatus', header: 'Situação Entrega', get: (c) => c.logisticsStatusLabel }
+    ];
+
+    const activeCols = selectedAnalyticalColumns
+      ? colDefs.filter((c) => selectedAnalyticalColumns[c.key] !== false)
+      : colDefs;
+
+    sheets.push({
+      sheetName: 'Contratos_Entrega',
+      headers: activeCols.map((c) => c.header),
+      rows: producerView.contracts.map((c) => activeCols.map((col) => col.get(c)))
     });
   }
 

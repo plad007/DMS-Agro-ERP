@@ -222,16 +222,16 @@ export const ProducerIntelligenceTab: React.FC<ProducerIntelligenceTabProps> = (
           </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-2 border-t border-slate-100">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3 pt-2 border-t border-slate-100">
           {economicGroups.length > 0 && (
-            <div>
-              <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+            <div className="lg:col-span-3 min-w-0">
+              <label className="block text-[11px] font-semibold text-slate-600 mb-1 truncate">
                 Grupo Econômico (Sessão)
               </label>
               <select
                 value={selectedGroupId}
                 onChange={(e) => setSelectedGroupId(e.target.value)}
-                className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg bg-white text-slate-800"
+                className="w-full h-[38px] px-3 py-1.5 text-xs border border-slate-300 rounded-lg bg-white text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500"
               >
                 <option value="">Usar seleção individual abaixo</option>
                 {economicGroups.map((g) => (
@@ -244,6 +244,7 @@ export const ProducerIntelligenceTab: React.FC<ProducerIntelligenceTabProps> = (
           )}
 
           <MultiSelectFilter
+            className={economicGroups.length > 0 ? 'sm:col-span-2 lg:col-span-5' : 'sm:col-span-2 lg:col-span-6'}
             label="Produtor(es) (aceita múltipla seleção p/ grupo)"
             placeholder="Todos os produtores"
             options={producerOptions}
@@ -253,33 +254,47 @@ export const ProducerIntelligenceTab: React.FC<ProducerIntelligenceTabProps> = (
               setSelectedProducerKeys(vals);
               setSelectedFarms([]);
             }}
+            dropdownMinWidth={360}
+            maxInlineTags={2}
+            searchPlaceholder="Buscar por nome ou CPF/CNPJ..."
           />
 
           <MultiSelectFilter
+            className={economicGroups.length > 0 ? 'lg:col-span-4' : 'sm:col-span-2 lg:col-span-6'}
             label="Fazendas do Produtor"
             placeholder="Todas as fazendas"
             options={availableFarmsForSelection.map((f) => ({ value: f, label: f }))}
             selectedValues={selectedFarms}
             onChange={setSelectedFarms}
+            dropdownMinWidth={320}
+            maxInlineTags={2}
+            searchPlaceholder="Buscar fazenda..."
           />
 
           <MultiSelectFilter
+            className="lg:col-span-2"
             label="Produtos"
             placeholder="Todos os produtos"
             options={availableProducts.map((p) => ({ value: p, label: p }))}
             selectedValues={selectedProducts}
             onChange={setSelectedProducts}
+            dropdownMinWidth={240}
+            searchPlaceholder="Buscar produto..."
           />
 
           <MultiSelectFilter
+            className="lg:col-span-2"
             label="Safras"
             placeholder="Todas as safras"
             options={availableCrops.map((c) => ({ value: c, label: `Safra ${c}` }))}
             selectedValues={selectedCrops}
             onChange={setSelectedCrops}
+            dropdownMinWidth={220}
+            searchPlaceholder="Buscar safra..."
           />
 
           <MultiSelectFilter
+            className="lg:col-span-2"
             label="Moeda"
             placeholder="BRL e USD"
             options={[
@@ -288,33 +303,38 @@ export const ProducerIntelligenceTab: React.FC<ProducerIntelligenceTabProps> = (
             ]}
             selectedValues={selectedCurrencies}
             onChange={(vals) => setSelectedCurrencies(vals as CurrencyCode[])}
+            dropdownMinWidth={220}
+            searchPlaceholder="Buscar moeda..."
           />
 
           <MultiSelectFilter
+            className="lg:col-span-3"
             label="Status"
             placeholder="Todos os status"
             options={availableStatuses.map((s) => ({ value: s, label: s }))}
             selectedValues={selectedStatuses}
             onChange={(vals) => setSelectedStatuses(vals as NormalizedContractStatus[])}
+            dropdownMinWidth={250}
+            searchPlaceholder="Buscar status..."
           />
 
-          <div className="grid grid-cols-2 gap-2">
-            <div>
+          <div className="sm:col-span-2 lg:col-span-3 grid grid-cols-2 gap-2 min-w-0">
+            <div className="min-w-0">
               <label className="block text-[11px] font-semibold text-slate-600 mb-1">De</label>
               <input
                 type="date"
                 value={startDate}
                 onChange={(e) => setStartDate(e.target.value)}
-                className="w-full px-2 py-2 text-xs border border-slate-300 rounded-lg bg-white"
+                className="w-full h-[38px] px-2 py-1.5 text-xs border border-slate-300 rounded-lg bg-white text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500"
               />
             </div>
-            <div>
+            <div className="min-w-0">
               <label className="block text-[11px] font-semibold text-slate-600 mb-1">Até</label>
               <input
                 type="date"
                 value={endDate}
                 onChange={(e) => setEndDate(e.target.value)}
-                className="w-full px-2 py-2 text-xs border border-slate-300 rounded-lg bg-white"
+                className="w-full h-[38px] px-2 py-1.5 text-xs border border-slate-300 rounded-lg bg-white text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500"
               />
             </div>
           </div>

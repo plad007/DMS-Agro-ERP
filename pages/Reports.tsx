@@ -10,7 +10,8 @@ import {
   ShieldCheck,
   AlertTriangle,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Truck
 } from 'lucide-react';
 import {
   Buyer,
@@ -39,8 +40,11 @@ import {
   getCropYearNumber
 } from '../services/reportsAnalytics';
 import {
+  DEFAULT_EXTERNAL_LOGISTICS_SECTIONS,
+  ExternalLogisticsSections,
   ExternalProducerSections,
   buildExternalProducerExportSheets,
+  buildLogisticsExternalExportSheets,
   downloadCsvFile,
   downloadXlsxWorkbook
 } from '../services/reportsExport';
@@ -49,9 +53,12 @@ import { CommissionReportTab } from '../components/reports/CommissionReportTab';
 import { VolumeReportTab } from '../components/reports/VolumeReportTab';
 import { PacingReportTab } from '../components/reports/PacingReportTab';
 import { ProducerIntelligenceTab } from '../components/reports/ProducerIntelligenceTab';
+import { LogisticsScheduleTab } from '../components/reports/LogisticsScheduleTab';
+import { ProducerLogisticsExternalView } from '../services/logisticsScheduleAnalytics';
 import {
   ContractDrillDownModal,
   DataIntegrityModal,
+  ExternalLogisticsConfigModal,
   ExternalProducerConfigModal,
   SqlAndGroupsModal
 } from '../components/reports/ReportsSharedModals';
@@ -65,7 +72,7 @@ interface ReportsProps {
   dataIntegrity?: SystemDataIntegrity;
 }
 
-type ReportTabId = 'COMMISSIONS' | 'VOLUME' | 'PACING' | 'PRODUCER_INTEL';
+type ReportTabId = 'COMMISSIONS' | 'VOLUME' | 'PACING' | 'PRODUCER_INTEL' | 'LOGISTICS_SCHEDULE';
 
 export const Reports: React.FC<ReportsProps> = ({
   contracts,
@@ -106,6 +113,13 @@ export const Reports: React.FC<ReportsProps> = ({
     byFarm: true,
     analyticalContracts: true
   });
+  const [externalLogisticsModalState, setExternalLogisticsModalState] = useState<{
+    producerView: ProducerLogisticsExternalView;
+    filtersSummary: string[];
+    selectedColumns: Record<string, boolean>;
+  } | null>(null);
+  const [externalLogisticsSections, setExternalLogisticsSections] =
+    useState<ExternalLogisticsSections>(DEFAULT_EXTERNAL_LOGISTICS_SECTIONS);
 
   // 1. Enrich all contracts with producer/farm/logistics/integrity metadata
   const { enriched: enrichedContracts, issues: qualityIssues } = useMemo(
@@ -149,12 +163,17 @@ export const Reports: React.FC<ReportsProps> = ({
 
     const years = Array.from(yearsSet).sort((a, b) => Number(b) - Number(a));
     const crops = Array.from(cropsSet).sort((a, b) => getCropYearNumber(b) - getCropYearNumber(a));
-    const products = Array.from(productsSet).sort((a, b) => a.localeCompare(b));
-    const farms = Array.from(farmsSet).sort((a, b) => a.localeCompare(b));
-    const statuses = Array.from(statusesSet).sort((a, b) => a.localeCompare(b));
+    const products = Array.from(productsSet).sort((a, b) => a.localeCompare(b, 'pt-BR', { sensitivity: 'base' }));
+    const farms = Array.from(farmsSet).sort((a, b) => a.localeCompare(b, 'pt-BR', { sensitivity: 'base' }));
+    const statuses = Array.from(statusesSet).sort((a, b) => a.localeCompare(b, 'pt-BR', { sensitivity: 'base' }));
+    const stripPendingPrefix = (label: string) => label.replace(/^\[Pendência\]\s*/i, '');
     const producerOpts: MultiSelectOption[] = Array.from(producerMap.entries())
       .map(([value, meta]) => ({ value, label: meta.label, subLabel: meta.subLabel }))
-      .sort((a, b) => a.label.localeCompare(b.label));
+      .sort((a, b) =>
+        stripPendingPrefix(a.label).localeCompare(stripPendingPrefix(b.label), 'pt-BR', {
+          sensitivity: 'base'
+        })
+      );
 
     return { years, crops, products, farms, statuses, producerOpts };
   }, [enrichedContracts]);
@@ -248,7 +267,12 @@ export const Reports: React.FC<ReportsProps> = ({
     { id: 'COMMISSIONS', label: 'Comissões', icon: <Wallet className="w-4 h-4" /> },
     { id: 'VOLUME', label: 'Volume Comercial', icon: <BarChart3 className="w-4 h-4" /> },
     { id: 'PACING', label: 'Evolução de Safra', icon: <TrendingUp className="w-4 h-4" /> },
-    { id: 'PRODUCER_INTEL', label: 'Inteligência do Produtor', icon: <Sprout className="w-4 h-4" /> }
+    { id: 'PRODUCER_INTEL', label: 'Inteligência do Produtor', icon: <Sprout className="w-4 h-4" /> },
+    {
+      id: 'LOGISTICS_SCHEDULE',
+      label: 'Programação de Entregas e Retiradas',
+      icon: <Truck className="w-4 h-4" />
+    }
   ];
 
   return (
@@ -314,8 +338,12 @@ export const Reports: React.FC<ReportsProps> = ({
 
       {/* Shared Multi-Filter Panel (for Commissions & Volume tabs) */}
       {(activeTab === 'COMMISSIONS' || activeTab === 'VOLUME') && (
-        <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
-          <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3">
+        <div className="bg-white border border-slate-200 rounded-xl">
+          <div
+            className={`px-4 py-3 bg-slate-50 flex flex-wrap items-center justify-between gap-3 ${
+              showFiltersPanel ? 'rounded-t-xl border-b border-slate-200' : 'rounded-xl'
+            }`}
+          >
             <button
               type="button"
               onClick={() => setShowFiltersPanel((prev) => !prev)}
@@ -352,36 +380,40 @@ export const Reports: React.FC<ReportsProps> = ({
           </div>
 
           {showFiltersPanel && (
-            <div className="p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6 gap-3">
-              <div>
+            <div className="p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3">
+              <div className="lg:col-span-2 min-w-0">
                 <label className="block text-[11px] font-semibold text-slate-600 mb-1">Data Inicial</label>
                 <input
                   type="date"
                   value={filters.startDate}
                   onChange={(e) => setFilters((prev) => ({ ...prev, startDate: e.target.value }))}
-                  className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg bg-white"
+                  className="w-full h-[38px] px-3 py-1.5 text-xs border border-slate-300 rounded-lg bg-white text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 />
               </div>
 
-              <div>
+              <div className="lg:col-span-2 min-w-0">
                 <label className="block text-[11px] font-semibold text-slate-600 mb-1">Data Final</label>
                 <input
                   type="date"
                   value={filters.endDate}
                   onChange={(e) => setFilters((prev) => ({ ...prev, endDate: e.target.value }))}
-                  className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg bg-white"
+                  className="w-full h-[38px] px-3 py-1.5 text-xs border border-slate-300 rounded-lg bg-white text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 />
               </div>
 
               <MultiSelectFilter
+                className="lg:col-span-2"
                 label="Ano"
                 placeholder="Todos os anos"
                 options={filterOptions.years.map((y) => ({ value: y, label: y }))}
                 selectedValues={filters.years}
                 onChange={(years) => setFilters((prev) => ({ ...prev, years }))}
+                dropdownMinWidth={220}
+                searchPlaceholder="Buscar ano..."
               />
 
               <MultiSelectFilter
+                className="lg:col-span-2"
                 label="Mês"
                 placeholder="Todos os meses"
                 options={MONTH_SHORT_PT.map((label, idx) => ({
@@ -390,48 +422,64 @@ export const Reports: React.FC<ReportsProps> = ({
                 }))}
                 selectedValues={filters.months}
                 onChange={(months) => setFilters((prev) => ({ ...prev, months }))}
+                dropdownMinWidth={220}
+                searchPlaceholder="Buscar mês..."
               />
 
               <MultiSelectFilter
+                className="lg:col-span-2"
                 label="Safra"
                 placeholder="Todas as safras"
                 options={filterOptions.crops.map((c) => ({ value: c, label: `Safra ${c}` }))}
                 selectedValues={filters.crops}
                 onChange={(crops) => setFilters((prev) => ({ ...prev, crops }))}
+                dropdownMinWidth={220}
+                searchPlaceholder="Buscar safra..."
               />
 
               <MultiSelectFilter
+                className="lg:col-span-2"
                 label="Produto"
                 placeholder="Todos os produtos"
                 options={filterOptions.products.map((p) => ({ value: p, label: p }))}
                 selectedValues={filters.products}
                 onChange={(products) => setFilters((prev) => ({ ...prev, products }))}
+                dropdownMinWidth={240}
+                searchPlaceholder="Buscar produto..."
               />
 
               <MultiSelectFilter
+                className="sm:col-span-2 lg:col-span-4"
                 label="Produtores"
                 placeholder="Todos os produtores"
                 options={filterOptions.producerOpts}
                 selectedValues={filters.producerKeys}
                 onChange={(producerKeys) => setFilters((prev) => ({ ...prev, producerKeys }))}
+                dropdownMinWidth={360}
+                maxInlineTags={2}
+                searchPlaceholder="Buscar por nome ou CPF/CNPJ..."
               />
 
               <MultiSelectFilter
+                className="lg:col-span-3"
                 label="Fazenda"
                 placeholder="Todas as fazendas"
                 options={filterOptions.farms.map((f) => ({ value: f, label: f }))}
                 selectedValues={filters.farmNames}
                 onChange={(farmNames) => setFilters((prev) => ({ ...prev, farmNames }))}
+                dropdownMinWidth={320}
+                maxInlineTags={1}
+                searchPlaceholder="Buscar fazenda..."
               />
 
-              <div>
+              <div className="lg:col-span-3 min-w-0">
                 <label className="block text-[11px] font-semibold text-slate-600 mb-1">
                   Grupo Econômico
                 </label>
                 <select
                   value={filters.economicGroupId}
                   onChange={(e) => setFilters((prev) => ({ ...prev, economicGroupId: e.target.value }))}
-                  className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg bg-white text-slate-700"
+                  className="w-full h-[38px] px-3 py-1.5 text-xs border border-slate-300 rounded-lg bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 >
                   <option value="">Todos (sem grupo)</option>
                   {economicGroups.map((g) => (
@@ -443,6 +491,7 @@ export const Reports: React.FC<ReportsProps> = ({
               </div>
 
               <MultiSelectFilter
+                className="lg:col-span-2"
                 label={activeTab === 'COMMISSIONS' ? 'Moeda da Mercadoria' : 'Moeda'}
                 placeholder={activeTab === 'COMMISSIONS' ? 'BRL e USD (mercadoria)' : 'BRL e USD'}
                 options={[
@@ -451,9 +500,12 @@ export const Reports: React.FC<ReportsProps> = ({
                 ]}
                 selectedValues={filters.currencies}
                 onChange={(vals) => setFilters((prev) => ({ ...prev, currencies: vals as CurrencyCode[] }))}
+                dropdownMinWidth={240}
+                searchPlaceholder="Buscar moeda..."
               />
 
               <MultiSelectFilter
+                className="lg:col-span-3"
                 label="Status do Contrato"
                 placeholder="Todos os status"
                 options={filterOptions.statuses.map((s) => ({ value: s, label: s }))}
@@ -461,10 +513,13 @@ export const Reports: React.FC<ReportsProps> = ({
                 onChange={(vals) =>
                   setFilters((prev) => ({ ...prev, statuses: vals as NormalizedContractStatus[] }))
                 }
+                dropdownMinWidth={260}
+                searchPlaceholder="Buscar status..."
               />
 
               {activeTab === 'COMMISSIONS' && (
                 <MultiSelectFilter
+                  className="lg:col-span-3"
                   label="Origem da Previsão"
                   placeholder="Todas as origens"
                   options={[
@@ -477,6 +532,8 @@ export const Reports: React.FC<ReportsProps> = ({
                   onChange={(vals) =>
                     setFilters((prev) => ({ ...prev, forecastOrigins: vals as ForecastOrigin[] }))
                   }
+                  dropdownMinWidth={300}
+                  searchPlaceholder="Buscar origem..."
                 />
               )}
             </div>
@@ -562,6 +619,58 @@ export const Reports: React.FC<ReportsProps> = ({
           availableCrops={filterOptions.crops}
           availableStatuses={filterOptions.statuses}
           onOpenExternalExport={(params) => setExternalModalState(params)}
+        />
+      )}
+
+      {/* TAB 5: LOGISTICS DELIVERY & PICKUP SCHEDULING */}
+      {activeTab === 'LOGISTICS_SCHEDULE' && (
+        <LogisticsScheduleTab
+          enrichedContracts={enrichedContracts}
+          unit={unit}
+          onChangeUnit={setUnit}
+          producerOptions={filterOptions.producerOpts}
+          economicGroups={economicGroups}
+          availableProducts={filterOptions.products}
+          availableCrops={filterOptions.crops}
+          availableStatuses={filterOptions.statuses}
+          onDrillDown={handleDrillDown}
+          onOpenInternalPrint={({
+            mode,
+            includeCharts,
+            metricLabel,
+            selectedColumns,
+            filtersSummary: logFilters,
+            summary,
+            matrix,
+            gantt,
+            analyticalRows
+          }) =>
+            setPrintPayload({
+              kind: 'LOGISTICS_INTERNAL',
+              title: 'Programação de Entregas e Retiradas — DMS Agro',
+              filtersSummary: logFilters,
+              mode,
+              includeCharts,
+              unit,
+              metricLabel,
+              selectedColumns,
+              summary,
+              matrix,
+              gantt,
+              analyticalRows
+            })
+          }
+          onOpenExternalPrintOrExport={({
+            producerView,
+            filtersSummary: logFilters,
+            selectedColumns
+          }) =>
+            setExternalLogisticsModalState({
+              producerView,
+              filtersSummary: logFilters,
+              selectedColumns
+            })
+          }
         />
       )}
 
@@ -660,6 +769,79 @@ export const Reports: React.FC<ReportsProps> = ({
             );
           }}
           onClose={() => setExternalModalState(null)}
+        />
+      )}
+
+      {externalLogisticsModalState && (
+        <ExternalLogisticsConfigModal
+          producerOrGroupTitle={externalLogisticsModalState.producerView.targetTitle}
+          producerDocsLabel={externalLogisticsModalState.producerView.targetDocs}
+          referenceDateLabel={formatDateBR(
+            externalLogisticsModalState.producerView.referenceDate
+          )}
+          contractsCount={externalLogisticsModalState.producerView.contractsCount}
+          sections={externalLogisticsSections}
+          onChangeSections={setExternalLogisticsSections}
+          onPrintPdf={() => {
+            const state = externalLogisticsModalState;
+            setExternalLogisticsModalState(null);
+            setPrintPayload({
+              kind: 'LOGISTICS_EXTERNAL',
+              title: `Agenda de Entregas — ${state.producerView.targetTitle}`,
+              filtersSummary: state.filtersSummary,
+              sections: externalLogisticsSections,
+              selectedColumns: state.selectedColumns,
+              producerView: state.producerView
+            });
+          }}
+          onExportCsv={() => {
+            const sheets = buildLogisticsExternalExportSheets({
+              producerView: externalLogisticsModalState.producerView,
+              sections: externalLogisticsSections,
+              selectedAnalyticalColumns: externalLogisticsModalState.selectedColumns
+            });
+            const target =
+              sheets.find((s) => s.sheetName === 'Contratos_Entrega') ||
+              sheets.find((s) => s.sheetName === 'Programacao_Periodos') ||
+              sheets[0];
+            if (!target) return;
+            downloadCsvFile(
+              `DMS_Agenda_Logistica_${externalLogisticsModalState.producerView.targetTitle}`,
+              target.headers,
+              target.rows,
+              [
+                `DMS Agro — Agenda de Entregas e Retiradas: ${externalLogisticsModalState.producerView.targetTitle}`,
+                `Referência: ${formatDateBR(externalLogisticsModalState.producerView.referenceDate)}`
+              ]
+            );
+          }}
+          onExportXlsx={() => {
+            const sheets = buildLogisticsExternalExportSheets({
+              producerView: externalLogisticsModalState.producerView,
+              sections: externalLogisticsSections,
+              selectedAnalyticalColumns: externalLogisticsModalState.selectedColumns
+            });
+            downloadXlsxWorkbook(
+              `DMS_Agenda_Logistica_${externalLogisticsModalState.producerView.targetTitle}`,
+              sheets,
+              [
+                ['Documento', 'Agenda Logística Externa do Produtor'],
+                ['Produtor / Grupo', externalLogisticsModalState.producerView.targetTitle],
+                ['Documento(s)', externalLogisticsModalState.producerView.targetDocs || '-'],
+                [
+                  'Referência',
+                  formatDateBR(externalLogisticsModalState.producerView.referenceDate)
+                ],
+                [
+                  'Unidade',
+                  externalLogisticsModalState.producerView.unit === 'TON'
+                    ? 'Toneladas (60kg/sc)'
+                    : 'Sacas (60kg)'
+                ]
+              ]
+            );
+          }}
+          onClose={() => setExternalLogisticsModalState(null)}
         />
       )}
 

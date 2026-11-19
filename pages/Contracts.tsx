@@ -4,6 +4,14 @@ import { createPortal } from 'react-dom';
 import { Plus, Search, Filter, Download, FileSpreadsheet, Lock, Unlock, Edit2, Share2, CheckCircle, FileText, Calendar, MapPin, DollarSign, Truck, Calculator, Eye, Printer, X, Sprout, FileBarChart, Settings2, FileDown, Send, Banknote, Trash2, AlertTriangle } from 'lucide-react';
 import { Contract, PricingMode, ContractStatus, MarketData, Producer, Buyer, FreightType, BankAccount } from '../types';
 import { generateContractNumber, saveContract, deleteContract, checkContractDependencies, getProducers, getBuyers } from '../services/mockService';
+import {
+  buildContractYearsRange,
+  computePeriodDatesFromSelectors,
+  resolveContractPeriodOnEdit,
+  validateContractDeliveryPeriod,
+  ContractPeriodResolution
+} from '../services/logisticsScheduleAnalytics';
+import { formatDateBR } from '../services/reportsAnalytics';
 
 interface ContractsProps {
   contracts: Contract[];
@@ -18,8 +26,6 @@ const MONTHS = [
   'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
   'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
 ];
-
-const YEARS = [2024, 2025, 2026, 2027, 2028];
 
 // --- COMPONENTE DE IMPRESSÃO ISOLADO (IFRAME) ---
 interface PrintIsolationProps {
@@ -177,6 +183,13 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
   const [endFortnight, setEndFortnight] = useState<'1' | '2'>('2');
   const [endMonth, setEndMonth] = useState(new Date().getMonth());
   const [endYear, setEndYear] = useState(new Date().getFullYear());
+  const [hasEditedPeriod, setHasEditedPeriod] = useState(false);
+  const [periodEditMeta, setPeriodEditMeta] = useState<ContractPeriodResolution | null>(null);
+
+  const selectableYears = useMemo(
+    () => buildContractYearsRange([startYear, endYear]),
+    [startYear, endYear]
+  );
 
   // Form State
   const [formData, setFormData] = useState<Partial<Contract>>({
@@ -301,36 +314,38 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
     }));
   }, [isModalOpen, editingContract, producersList]);
 
-  // Update underlying dates when UI selectors change
+  // Update underlying dates when UI selectors change (ONLY for new contracts or after explicit user edit)
   useEffect(() => {
     if (!isModalOpen) return;
+    if (editingContract && !hasEditedPeriod) return;
 
-    let startDateStr = '';
-    
-    if (isImmediate) {
-        startDateStr = new Date().toISOString().split('T')[0];
-    } else {
-        const day = startFortnight === '1' ? 1 : 16;
-        const d = new Date(startYear, startMonth, day);
-        d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
-        startDateStr = d.toISOString().split('T')[0];
-    }
-
-    let endDay = 15;
-    if (endFortnight === '2') {
-        endDay = new Date(endYear, endMonth + 1, 0).getDate();
-    }
-    const endDateObj = new Date(endYear, endMonth, endDay);
-    endDateObj.setMinutes(endDateObj.getMinutes() - endDateObj.getTimezoneOffset());
-    const endDateStr = endDateObj.toISOString().split('T')[0];
+    const { shipmentStartDate, shipmentEndDate } = computePeriodDatesFromSelectors({
+      isImmediate,
+      startFortnight,
+      startMonth0: startMonth,
+      startYear,
+      endFortnight,
+      endMonth0: endMonth,
+      endYear
+    });
 
     setFormData(prev => ({
-        ...prev,
-        shipmentStartDate: startDateStr,
-        shipmentEndDate: endDateStr
+      ...prev,
+      shipmentStartDate,
+      shipmentEndDate
     }));
-
-  }, [isImmediate, startFortnight, startMonth, startYear, endFortnight, endMonth, endYear, isModalOpen]);
+  }, [
+    isImmediate,
+    startFortnight,
+    startMonth,
+    startYear,
+    endFortnight,
+    endMonth,
+    endYear,
+    isModalOpen,
+    editingContract,
+    hasEditedPeriod
+  ]);
 
   // Handlers
   const handlePrintContract = (contract: Contract, includeCommission = false) => {
@@ -403,25 +418,20 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
   const handleEdit = (contract: Contract) => {
     setEditingContract(contract);
     setFormData({ ...contract });
-    
-    const start = new Date(contract.shipmentStartDate);
-    const end = new Date(contract.shipmentEndDate);
-    
-    const startDay = start.getUTCDate();
-    if (startDay !== 1 && startDay !== 16) {
-        setIsImmediate(true);
-    } else {
-        setIsImmediate(false);
-        setStartFortnight(startDay <= 15 ? '1' : '2');
-    }
-    
-    setStartMonth(start.getUTCMonth());
-    setStartYear(start.getUTCFullYear());
 
-    const endDay = end.getUTCDate();
-    setEndFortnight(endDay <= 15 ? '1' : '2');
-    setEndMonth(end.getUTCMonth());
-    setEndYear(end.getUTCFullYear());
+    const resolvedPeriod = resolveContractPeriodOnEdit(
+      contract.shipmentStartDate,
+      contract.shipmentEndDate
+    );
+    setPeriodEditMeta(resolvedPeriod);
+    setHasEditedPeriod(false);
+    setIsImmediate(false);
+    setStartFortnight(resolvedPeriod.startFortnight);
+    setStartMonth(resolvedPeriod.startMonth0);
+    setStartYear(resolvedPeriod.startYear);
+    setEndFortnight(resolvedPeriod.endFortnight);
+    setEndMonth(resolvedPeriod.endMonth0);
+    setEndYear(resolvedPeriod.endYear);
     
     const seller = findProducerForContract(contract);
     const resolvedFarm = resolveContractFarm(contract, seller);
@@ -511,6 +521,8 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
     setStartYear(today.getFullYear());
     setStartFortnight('1');
     setIsImmediate(false);
+    setHasEditedPeriod(true);
+    setPeriodEditMeta(null);
     
     setEndMonth(today.getMonth());
     setEndYear(today.getFullYear());
@@ -631,6 +643,17 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
     if (!formData.sellerName || !formData.buyerName || !formData.totalBags || !formData.pickupLocation || !formData.closingDate) {
         alert("Preencha os campos obrigatórios (Data, Vendedor, Comprador, Volume, Local)");
         return;
+    }
+
+    if (!editingContract || hasEditedPeriod) {
+      const periodValidation = validateContractDeliveryPeriod(
+        formData.shipmentStartDate,
+        formData.shipmentEndDate
+      );
+      if (!periodValidation.valid) {
+        alert(periodValidation.error || 'Período de entrega inválido.');
+        return;
+      }
     }
 
     setIsLoading(true);
@@ -1371,42 +1394,124 @@ export const Contracts: React.FC<ContractsProps> = ({ contracts, marketData, onU
                             </div>
                             
                             <hr className="border-slate-100 my-4" />
+
+                            {editingContract && periodEditMeta?.isInvalidRange && !hasEditedPeriod && (
+                              <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-800 flex items-start gap-2.5">
+                                <AlertTriangle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+                                <div className="flex-1">
+                                  <p className="font-bold">Período de entrega original inconsistente</p>
+                                  <p className="mt-0.5">
+                                    As datas originais foram preservadas (Início: <strong>{formatDateBR(periodEditMeta.preservedStartDate)}</strong> · Fim: <strong>{formatDateBR(periodEditMeta.preservedEndDate)}</strong>) e não serão sobrescritas automaticamente. Caso altere o período abaixo, informe um intervalo válido (início menor ou igual ao fim).
+                                  </p>
+                                </div>
+                              </div>
+                            )}
+
+                            {editingContract && !hasEditedPeriod && !periodEditMeta?.isInvalidRange && (
+                              <div className="mb-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-2.5 text-xs text-slate-700 flex flex-wrap items-center justify-between gap-2">
+                                <span>
+                                  <strong>Período original preservado:</strong>{' '}
+                                  {formatDateBR(formData.shipmentStartDate)} até {formatDateBR(formData.shipmentEndDate)}
+                                  {periodEditMeta?.isNonStandardDates ? ' (data específica/legado)' : ''}
+                                </span>
+                                <span className="text-[11px] text-slate-500">
+                                  Só será alterado se você modificar os seletores abaixo.
+                                </span>
+                              </div>
+                            )}
                             
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 <div>
                                     <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Início do Embarque</label>
                                     <div className="flex items-center gap-2 mb-2">
-                                        <input type="checkbox" id="immediate" checked={isImmediate} onChange={(e) => setIsImmediate(e.target.checked)} className="rounded text-emerald-600 focus:ring-emerald-500" />
-                                        <label htmlFor="immediate" className="text-sm text-slate-700">Imediato</label>
+                                        <input
+                                          type="checkbox"
+                                          id="immediate"
+                                          checked={isImmediate}
+                                          onChange={(e) => {
+                                            setHasEditedPeriod(true);
+                                            setIsImmediate(e.target.checked);
+                                          }}
+                                          className="rounded text-emerald-600 focus:ring-emerald-500"
+                                        />
+                                        <label htmlFor="immediate" className="text-sm text-slate-700">Imediato (iniciar na data de hoje)</label>
                                     </div>
                                     {!isImmediate && (
                                         <div className="flex gap-2">
-                                            <select value={startFortnight} onChange={(e) => setStartFortnight(e.target.value as any)} className="border rounded p-2 text-sm bg-white">
+                                            <select
+                                              value={startFortnight}
+                                              onChange={(e) => {
+                                                setHasEditedPeriod(true);
+                                                setStartFortnight(e.target.value as any);
+                                              }}
+                                              className="border rounded p-2 text-sm bg-white"
+                                            >
                                                 <option value="1">1ª Quinzena</option>
                                                 <option value="2">2ª Quinzena</option>
                                             </select>
-                                            <select value={startMonth} onChange={(e) => setStartMonth(Number(e.target.value))} className="border rounded p-2 text-sm bg-white flex-1">
+                                            <select
+                                              value={startMonth}
+                                              onChange={(e) => {
+                                                setHasEditedPeriod(true);
+                                                setStartMonth(Number(e.target.value));
+                                              }}
+                                              className="border rounded p-2 text-sm bg-white flex-1"
+                                            >
                                                 {MONTHS.map((m, i) => <option key={i} value={i}>{m}</option>)}
                                             </select>
-                                            <select value={startYear} onChange={(e) => setStartYear(Number(e.target.value))} className="border rounded p-2 text-sm bg-white w-24">
-                                                {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
+                                            <select
+                                              value={startYear}
+                                              onChange={(e) => {
+                                                setHasEditedPeriod(true);
+                                                setStartYear(Number(e.target.value));
+                                              }}
+                                              className="border rounded p-2 text-sm bg-white w-24"
+                                            >
+                                                {selectableYears.map(y => <option key={y} value={y}>{y}</option>)}
                                             </select>
                                         </div>
                                     )}
                                 </div>
                                 <div>
                                     <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Fim do Embarque</label>
-                                    <div className="h-[28px] mb-2"></div> {/* Spacer to align with checkbox */}
+                                    <div className="h-[28px] mb-2 flex items-center">
+                                      {hasEditedPeriod && formData.shipmentStartDate && formData.shipmentEndDate && formData.shipmentStartDate > formData.shipmentEndDate && (
+                                        <span className="text-xs font-semibold text-red-600">
+                                          Início posterior ao fim — ajuste as datas antes de salvar.
+                                        </span>
+                                      )}
+                                    </div>
                                     <div className="flex gap-2">
-                                        <select value={endFortnight} onChange={(e) => setEndFortnight(e.target.value as any)} className="border rounded p-2 text-sm bg-white">
+                                        <select
+                                          value={endFortnight}
+                                          onChange={(e) => {
+                                            setHasEditedPeriod(true);
+                                            setEndFortnight(e.target.value as any);
+                                          }}
+                                          className="border rounded p-2 text-sm bg-white"
+                                        >
                                             <option value="1">1ª Quinzena</option>
                                             <option value="2">2ª Quinzena</option>
                                         </select>
-                                        <select value={endMonth} onChange={(e) => setEndMonth(Number(e.target.value))} className="border rounded p-2 text-sm bg-white flex-1">
+                                        <select
+                                          value={endMonth}
+                                          onChange={(e) => {
+                                            setHasEditedPeriod(true);
+                                            setEndMonth(Number(e.target.value));
+                                          }}
+                                          className="border rounded p-2 text-sm bg-white flex-1"
+                                        >
                                             {MONTHS.map((m, i) => <option key={i} value={i}>{m}</option>)}
                                         </select>
-                                        <select value={endYear} onChange={(e) => setEndYear(Number(e.target.value))} className="border rounded p-2 text-sm bg-white w-24">
-                                            {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
+                                        <select
+                                          value={endYear}
+                                          onChange={(e) => {
+                                            setHasEditedPeriod(true);
+                                            setEndYear(Number(e.target.value));
+                                          }}
+                                          className="border rounded p-2 text-sm bg-white w-24"
+                                        >
+                                            {selectableYears.map(y => <option key={y} value={y}>{y}</option>)}
                                         </select>
                                     </div>
                                 </div>

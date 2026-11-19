@@ -760,8 +760,8 @@ export const CommissionReportTab: React.FC<CommissionReportTabProps> = ({
 
       {/* SUBVIEW: ANALYTICAL */}
       {subView === 'ANALYTICAL' && (
-        <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
-          <div className="px-5 py-3.5 border-b border-slate-200 bg-slate-50 flex flex-wrap items-center justify-between gap-3">
+        <div className="bg-white border border-slate-200 rounded-xl">
+          <div className="px-5 py-3.5 border-b border-slate-200 bg-slate-50 rounded-t-xl flex flex-wrap items-center justify-between gap-3">
             <div className="relative w-full sm:w-80">
               <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
               <input
@@ -785,7 +785,7 @@ export const CommissionReportTab: React.FC<CommissionReportTabProps> = ({
                 <Columns className="w-3.5 h-3.5" /> Colunas
               </button>
               {showColPicker && (
-                <div className="absolute right-0 top-10 z-30 w-64 bg-white border border-slate-200 rounded-xl shadow-xl p-3 space-y-1.5">
+                <div className="absolute right-0 top-10 z-40 w-64 bg-white border border-slate-200 rounded-xl shadow-xl p-3 space-y-1.5">
                   <p className="text-[11px] font-bold uppercase text-slate-500 mb-2">Colunas Visíveis</p>
                   {ANALYTICAL_COL_OPTIONS.map((col) => (
                     <label key={col.key} className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer py-0.5">
@@ -808,7 +808,7 @@ export const CommissionReportTab: React.FC<CommissionReportTabProps> = ({
             </div>
           </div>
 
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto rounded-b-xl">
             <table className="w-full text-left border-collapse text-xs tabular-nums">
               <thead className="bg-slate-50 border-b border-slate-200 text-slate-600">
                 <tr>

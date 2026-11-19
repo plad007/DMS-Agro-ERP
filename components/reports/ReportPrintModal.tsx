@@ -11,7 +11,14 @@ import {
   formatDateBR,
   formatMonthLabel
 } from '../../services/reportsAnalytics';
-import { ExternalProducerSections } from '../../services/reportsExport';
+import { ExternalLogisticsSections, ExternalProducerSections } from '../../services/reportsExport';
+import {
+  LogisticsAnalyticsSummary,
+  LogisticsContractRow,
+  LogisticsGanttData,
+  LogisticsMatrixResult,
+  ProducerLogisticsExternalView
+} from '../../services/logisticsScheduleAnalytics';
 
 const LOGO_URL = 'https://i.postimg.cc/8CmMzM9c/LOGO-DMS-SF.png';
 
@@ -47,6 +54,28 @@ export type PrintReportPayload =
       unit: VolumeUnit;
       sections: ExternalProducerSections;
       intel: ProducerIntelligenceResult;
+    }
+  | {
+      kind: 'LOGISTICS_INTERNAL';
+      title: string;
+      filtersSummary: string[];
+      mode: 'SYNTHETIC' | 'GANTT' | 'ANALYTICAL' | 'TRACKING';
+      includeCharts: boolean;
+      unit: VolumeUnit;
+      metricLabel: string;
+      selectedColumns: Record<string, boolean>;
+      summary: LogisticsAnalyticsSummary;
+      matrix: LogisticsMatrixResult;
+      gantt: LogisticsGanttData;
+      analyticalRows: LogisticsContractRow[];
+    }
+  | {
+      kind: 'LOGISTICS_EXTERNAL';
+      title: string;
+      filtersSummary: string[];
+      sections: ExternalLogisticsSections;
+      selectedColumns: Record<string, boolean>;
+      producerView: ProducerLogisticsExternalView;
     };
 
 interface ReportPrintModalProps {
@@ -125,7 +154,8 @@ export const ReportPrintModal: React.FC<ReportPrintModalProps> = ({ payload, onC
   const [iframeEl, setIframeEl] = useState<HTMLIFrameElement | null>(null);
   const [mountNode, setMountNode] = useState<HTMLElement | null>(null);
 
-  const isLandscape = payload.kind !== 'PRODUCER_EXTERNAL';
+  const isLandscape =
+    payload.kind !== 'PRODUCER_EXTERNAL' && payload.kind !== 'LOGISTICS_EXTERNAL';
   const pageSizeCss = isLandscape ? 'A4 landscape' : 'A4 portrait';
 
   useEffect(() => {
@@ -650,8 +680,8 @@ export const ReportPrintModal: React.FC<ReportPrintModalProps> = ({ payload, onC
       );
     }
 
-    // VOLUME_INTERNAL
-    const { analytics, matrix, mode, includeCharts, unit, metricLabel } = payload;
+    if (payload.kind === 'VOLUME_INTERNAL') {
+      const { analytics, matrix, mode, includeCharts, unit, metricLabel } = payload;
     return (
       <div style={{ padding: '4mm' }}>
         {renderHeader(`Relatório Interno de Volume Comercial (${metricLabel})`, [
@@ -756,6 +786,413 @@ export const ReportPrintModal: React.FC<ReportPrintModalProps> = ({ payload, onC
                   <td className="num">100%</td>
                 </tr>
               </tfoot>
+            </table>
+          </div>
+        )}
+
+        {renderFooter()}
+      </div>
+    );
+    }
+
+    if (payload.kind === 'LOGISTICS_EXTERNAL') {
+      const { producerView, sections, selectedColumns } = payload;
+      const unit = producerView.unit;
+
+      return (
+        <div style={{ padding: '4mm' }}>
+          {renderHeader(`Programação de Entregas e Retiradas — ${producerView.targetTitle}`, [
+            producerView.targetDocs ? `Documento(s): ${producerView.targetDocs}` : '',
+            `Data de referência: ${formatDateBR(producerView.referenceDate)} · Unidade: ${
+              unit === 'TON' ? 'Toneladas (60kg/sc)' : 'Sacas (60kg)'
+            }`
+          ].filter(Boolean))}
+          {renderFiltersBar(payload.filtersSummary)}
+
+          {sections.executiveSummary && (
+            <div className="section-box">
+              <h2 style={{ fontSize: '11.5px', fontWeight: 700, color: '#065f46', margin: '0 0 6px 0', borderBottom: '1px solid #e2e8f0', paddingBottom: '3px' }}>
+                1. Resumo Logístico de Entregas e Retiradas
+              </h2>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px', marginBottom: '10px' }}>
+                <div style={{ border: '1px solid #cbd5e1', borderRadius: '4px', padding: '7px' }}>
+                  <div style={{ fontSize: '8.5px', color: '#64748b', fontWeight: 700 }}>CONTRATADO</div>
+                  <div style={{ fontSize: '12.5px', fontWeight: 700, marginTop: '2px' }}>{formatQty(producerView.totalContracted, unit)}</div>
+                  <div style={{ fontSize: '8.5px', color: '#64748b' }}>{producerView.contractsCount} contrato(s)</div>
+                </div>
+                <div style={{ border: '1px solid #cbd5e1', borderRadius: '4px', padding: '7px' }}>
+                  <div style={{ fontSize: '8.5px', color: '#64748b', fontWeight: 700 }}>ENTREGUE REGISTRADO</div>
+                  <div style={{ fontSize: '12.5px', fontWeight: 700, marginTop: '2px', color: '#059669' }}>{formatQty(producerView.totalDelivered, unit)}</div>
+                  <div style={{ fontSize: '8.5px', color: '#64748b' }}>{producerView.deliveredPct.toFixed(1)}% do contratado</div>
+                </div>
+                <div style={{ border: '1px solid #cbd5e1', borderRadius: '4px', padding: '7px' }}>
+                  <div style={{ fontSize: '8.5px', color: '#64748b', fontWeight: 700 }}>SALDO CONHECIDO</div>
+                  <div style={{ fontSize: '12.5px', fontWeight: 700, marginTop: '2px', color: '#b45309' }}>{formatQty(producerView.totalBalance, unit)}</div>
+                  <div style={{ fontSize: '8.5px', color: '#64748b' }}>A entregar/retirar</div>
+                </div>
+                <div style={{ border: '1px solid #cbd5e1', borderRadius: '4px', padding: '7px' }}>
+                  <div style={{ fontSize: '8.5px', color: '#64748b', fontWeight: 700 }}>MODALIDADE FRETE</div>
+                  <div style={{ fontSize: '10.5px', fontWeight: 700, marginTop: '2px' }}>FOB: {formatQty(producerView.fobContracted, unit)}</div>
+                  <div style={{ fontSize: '8.5px', color: '#64748b' }}>CIF: {formatQty(producerView.cifContracted, unit)}</div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {sections.horizons && producerView.horizons.length > 0 && (
+            <div className="section-box">
+              <h2 style={{ fontSize: '11.5px', fontWeight: 700, color: '#065f46', margin: '0 0 6px 0', borderBottom: '1px solid #e2e8f0', paddingBottom: '3px' }}>
+                2. Horizontes Futuros de Entrega (Acumulados a partir de {formatDateBR(producerView.referenceDate)})
+              </h2>
+              <p style={{ fontSize: '8.5px', color: '#64748b', margin: '0 0 6px 0' }}>
+                Nota: Os horizontes são acumulados entre si (não devem ser somados). Contratos com janela ampla aparecem separados de quinzenas específicas.
+              </p>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Horizonte</th>
+                    <th>Até</th>
+                    <th className="num">Contratos</th>
+                    <th className="num">Quinzena Específica</th>
+                    <th className="num">Janelas Coincidentes</th>
+                    <th className="num">Saldo Coincidente Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {producerView.horizons.map((h) => (
+                    <tr key={h.days}>
+                      <td style={{ fontWeight: 700 }}>Próximos {h.days} dias</td>
+                      <td>{formatDateBR(h.horizonEndDate)}</td>
+                      <td className="num">{h.contractsCount}</td>
+                      <td className="num">{formatQty(h.definedVolume, unit)}</td>
+                      <td className="num">{formatQty(h.coincidentVolume, unit)}</td>
+                      <td className="num" style={{ fontWeight: 700 }}>{formatQty(h.totalOverlappingVolume, unit)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {sections.charts && producerView.scheduleRows.length > 0 && (
+            <SimplePrintBarSvg
+              title={`Volumes Programados por Período (${unit === 'TON' ? 'ton' : 'scs'})`}
+              items={producerView.scheduleRows.slice(0, 12).map((s) => ({
+                label: s.periodLabel.replace('Quinzena ', 'Q '),
+                value: s.contractedVolume,
+                displayValue: s.contractedVolume.toLocaleString('pt-BR', { maximumFractionDigits: 0 })
+              }))}
+              barColor="#059669"
+            />
+          )}
+
+          {sections.scheduleTable && producerView.scheduleRows.length > 0 && (
+            <div className="section-box">
+              <h2 style={{ fontSize: '11.5px', fontWeight: 700, color: '#065f46', margin: '0 0 6px 0', borderBottom: '1px solid #e2e8f0', paddingBottom: '3px' }}>
+                3. Agenda de Entregas por Quinzena / Período Contratado
+              </h2>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Período Contratado</th>
+                    <th>Datas Reais</th>
+                    <th className="num">Contratos</th>
+                    <th className="num">Contratado</th>
+                    <th className="num">Entregue Reg.</th>
+                    <th className="num">Saldo</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {producerView.scheduleRows.map((s) => (
+                    <tr key={s.periodKey}>
+                      <td style={{ fontWeight: 700 }}>{s.periodLabel}</td>
+                      <td>{s.exactDatesLabel}</td>
+                      <td className="num">{s.contractsCount}</td>
+                      <td className="num">{formatQty(s.contractedVolume, unit)}</td>
+                      <td className="num">{formatQty(s.deliveredVolume, unit)}</td>
+                      <td className="num" style={{ fontWeight: 700 }}>{formatQty(s.balanceVolume, unit)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {sections.byProductCrop && producerView.byProductAndCrop.length > 0 && (
+            <div className="section-box">
+              <h2 style={{ fontSize: '11.5px', fontWeight: 700, color: '#065f46', margin: '0 0 6px 0', borderBottom: '1px solid #e2e8f0', paddingBottom: '3px' }}>
+                4. Programação por Cultura e Safra
+              </h2>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Produto</th>
+                    <th>Safra</th>
+                    <th className="num">Contratos</th>
+                    <th className="num">Contratado</th>
+                    <th className="num">Entregue Reg.</th>
+                    <th className="num">Saldo</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {producerView.byProductAndCrop.map((p) => (
+                    <tr key={p.key}>
+                      <td style={{ fontWeight: 700 }}>{p.product}</td>
+                      <td>{p.crop}</td>
+                      <td className="num">{p.contractsCount}</td>
+                      <td className="num">{formatQty(p.contractedVolume, unit)}</td>
+                      <td className="num">{formatQty(p.deliveredVolume, unit)}</td>
+                      <td className="num" style={{ fontWeight: 700 }}>{formatQty(p.balanceVolume, unit)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {sections.byFarm && producerView.byFarm.length > 0 && (
+            <div className="section-box">
+              <h2 style={{ fontSize: '11.5px', fontWeight: 700, color: '#065f46', margin: '0 0 6px 0', borderBottom: '1px solid #e2e8f0', paddingBottom: '3px' }}>
+                5. Programação por Fazenda e Local de Embarque
+              </h2>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Fazenda</th>
+                    <th>Local de Embarque</th>
+                    <th className="num">Contratos</th>
+                    <th className="num">Contratado</th>
+                    <th className="num">Entregue Reg.</th>
+                    <th className="num">Saldo</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {producerView.byFarm.map((f) => (
+                    <tr key={f.key}>
+                      <td style={{ fontWeight: 700 }}>{f.farmName}</td>
+                      <td>{f.pickupLocation}</td>
+                      <td className="num">{f.contractsCount}</td>
+                      <td className="num">{formatQty(f.contractedVolume, unit)}</td>
+                      <td className="num">{formatQty(f.deliveredVolume, unit)}</td>
+                      <td className="num" style={{ fontWeight: 700 }}>{formatQty(f.balanceVolume, unit)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {sections.analyticalContracts && producerView.contracts.length > 0 && (
+            <div>
+              <h2 style={{ fontSize: '11.5px', fontWeight: 700, color: '#065f46', margin: '0 0 6px 0', borderBottom: '1px solid #e2e8f0', paddingBottom: '3px' }}>
+                6. Relação Detalhada de Contratos e Entregas ({producerView.contracts.length})
+              </h2>
+              <table>
+                <thead>
+                  <tr>
+                    {selectedColumns.contractNumber !== false && <th>Contrato</th>}
+                    {selectedColumns.product !== false && <th>Produto / Safra</th>}
+                    {selectedColumns.farmName !== false && <th>Fazenda</th>}
+                    {selectedColumns.pickupLocation !== false && <th>Local Embarque</th>}
+                    {selectedColumns.freightType !== false && <th>Frete</th>}
+                    {selectedColumns.periodLabel !== false && <th>Período</th>}
+                    {selectedColumns.contractedVolume !== false && <th className="num">Contratado</th>}
+                    {selectedColumns.deliveredVolume !== false && <th className="num">Entregue</th>}
+                    {selectedColumns.balanceVolume !== false && <th className="num">Saldo</th>}
+                    {selectedColumns.logisticsStatus !== false && <th>Situação</th>}
+                  </tr>
+                </thead>
+                <tbody>
+                  {producerView.contracts.map((c) => (
+                    <tr key={c.contractId}>
+                      {selectedColumns.contractNumber !== false && <td style={{ fontWeight: 700 }}>{c.contractNumber}</td>}
+                      {selectedColumns.product !== false && <td>{c.product} · {c.crop}</td>}
+                      {selectedColumns.farmName !== false && <td>{c.farmName}</td>}
+                      {selectedColumns.pickupLocation !== false && <td>{c.pickupLocation}</td>}
+                      {selectedColumns.freightType !== false && <td>{c.freightType}</td>}
+                      {selectedColumns.periodLabel !== false && <td>{c.exactDatesLabel}</td>}
+                      {selectedColumns.contractedVolume !== false && <td className="num">{formatQty(c.contractedVolume, unit)}</td>}
+                      {selectedColumns.deliveredVolume !== false && <td className="num">{formatQty(c.deliveredVolume, unit)}</td>}
+                      {selectedColumns.balanceVolume !== false && <td className="num">{formatQty(c.balanceVolume, unit)}</td>}
+                      {selectedColumns.logisticsStatus !== false && <td>{c.logisticsStatusLabel}</td>}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {renderFooter()}
+        </div>
+      );
+    }
+
+    // LOGISTICS_INTERNAL
+    const { summary, matrix, gantt, analyticalRows, mode, includeCharts, unit, metricLabel, selectedColumns } = payload;
+    return (
+      <div style={{ padding: '4mm' }}>
+        {renderHeader(`Relatório Interno — Programação de Entregas e Retiradas (${metricLabel})`, [
+          `Unidade: ${unit === 'TON' ? 'Toneladas (60kg/sc)' : 'Sacas (60kg)'} • Contratos com romaneios: ${summary.contractsWithShipments}/${summary.contractsCount}${
+            matrix.isSimulated ? ' • MODO SIMULAÇÃO PROPORCIONAL ATIVO (ESTIMATIVA)' : ''
+          }`
+        ])}
+        {renderFiltersBar(payload.filtersSummary)}
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px', marginBottom: '12px' }}>
+          <div style={{ border: '1px solid #cbd5e1', borderRadius: '4px', padding: '7px' }}>
+            <div style={{ fontSize: '8.5px', color: '#64748b', fontWeight: 700 }}>TOTAL PROGRAMADO</div>
+            <div style={{ fontSize: '12.5px', fontWeight: 700, marginTop: '2px' }}>{formatQty(summary.totalContracted, unit)}</div>
+            <div style={{ fontSize: '8.5px', color: '#64748b' }}>{summary.contractsCount} contratos · {summary.producersCount} produtores</div>
+          </div>
+          <div style={{ border: '1px solid #cbd5e1', borderRadius: '4px', padding: '7px' }}>
+            <div style={{ fontSize: '8.5px', color: '#64748b', fontWeight: 700 }}>ENTREGUE / SALDO</div>
+            <div style={{ fontSize: '11.5px', fontWeight: 700, marginTop: '2px', color: '#059669' }}>{formatQty(summary.totalDelivered, unit)} entr.</div>
+            <div style={{ fontSize: '8.5px', color: '#b45309' }}>Saldo: {formatQty(summary.totalBalance, unit)}</div>
+          </div>
+          <div style={{ border: '1px solid #cbd5e1', borderRadius: '4px', padding: '7px' }}>
+            <div style={{ fontSize: '8.5px', color: '#64748b', fontWeight: 700 }}>QUINZENA DEFINIDA × JANELA ABERTA</div>
+            <div style={{ fontSize: '11px', fontWeight: 700, marginTop: '2px' }}>1Q exata: {formatQty(summary.definedFortnightContracted, unit)}</div>
+            <div style={{ fontSize: '8.5px', color: '#64748b' }}>Abertas/Mês: {formatQty(summary.openWindowContracted + summary.fullMonthContracted, unit)}</div>
+          </div>
+          <div style={{ border: '1px solid #cbd5e1', borderRadius: '4px', padding: '7px' }}>
+            <div style={{ fontSize: '8.5px', color: '#64748b', fontWeight: 700 }}>FOB × CIF (SALDO)</div>
+            <div style={{ fontSize: '11px', fontWeight: 700, marginTop: '2px' }}>FOB: {formatQty(summary.fobBalance, unit)}</div>
+            <div style={{ fontSize: '8.5px', color: '#64748b' }}>CIF: {formatQty(summary.cifBalance, unit)}</div>
+          </div>
+        </div>
+
+        {includeCharts && summary.byPeriodChart.length > 0 && (
+          <SimplePrintBarSvg
+            title={`Concentração por Mês de Programação (${unit === 'TON' ? 'ton' : 'scs'})`}
+            items={summary.byPeriodChart.slice(0, 12).map((m) => ({
+              label: m.label,
+              value: m.totalVolume,
+              displayValue: m.totalVolume >= 1000 ? `${(m.totalVolume / 1000).toFixed(0)}k` : m.totalVolume.toFixed(0)
+            }))}
+            barColor={matrix.isSimulated ? '#d97706' : '#059669'}
+          />
+        )}
+
+        {mode === 'SYNTHETIC' && (
+          <div>
+            <h2 style={{ fontSize: '11.5px', fontWeight: 700, margin: '0 0 6px 0' }}>
+              Programação Sintética ({metricLabel}){matrix.isSimulated ? ' — SIMULAÇÃO PROPORCIONAL' : ''}
+            </h2>
+            <table>
+              <thead>
+                <tr>
+                  <th>Agrupamento</th>
+                  {matrix.columns.slice(0, 14).map((c) => (
+                    <th key={c.key} className="num">{c.label}</th>
+                  ))}
+                  <th className="num">Total</th>
+                  <th className="num">Part. (%)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {matrix.rows.map((r) => (
+                  <tr key={r.key}>
+                    <td style={{ fontWeight: 700 }}>{r.label}</td>
+                    {matrix.columns.slice(0, 14).map((c) => (
+                      <td key={c.key} className="num">
+                        {r.cells[c.key]?.value ? r.cells[c.key].value.toLocaleString('pt-BR', { maximumFractionDigits: 1 }) : '-'}
+                      </td>
+                    ))}
+                    <td className="num" style={{ fontWeight: 700 }}>{r.total.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}</td>
+                    <td className="num">{r.sharePct.toFixed(1)}%</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr style={{ background: '#f1f5f9', fontWeight: 700 }}>
+                  <td>TOTAL GERAL</td>
+                  {matrix.columns.slice(0, 14).map((c) => (
+                    <td key={c.key} className="num">{(matrix.colTotals[c.key] || 0).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}</td>
+                  ))}
+                  <td className="num">{matrix.grandTotal.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}</td>
+                  <td className="num">100%</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        )}
+
+        {(mode === 'ANALYTICAL' || mode === 'GANTT') && (
+          <div>
+            <h2 style={{ fontSize: '11.5px', fontWeight: 700, margin: '0 0 6px 0' }}>
+              {mode === 'GANTT'
+                ? `Cronograma de Entregas — Janelas Contratuais (${gantt.items.length} contratos)`
+                : `Relatório Analítico de Programação (${analyticalRows.length} contratos)`}
+            </h2>
+            <table>
+              <thead>
+                <tr>
+                  {selectedColumns.contractNumber !== false && <th>Contrato</th>}
+                  {selectedColumns.producerName !== false && <th>Produtor</th>}
+                  {selectedColumns.farmName !== false && <th>Fazenda</th>}
+                  {selectedColumns.product !== false && <th>Produto / Safra</th>}
+                  {selectedColumns.buyerName && <th>Comprador</th>}
+                  {selectedColumns.freightType !== false && <th>Frete</th>}
+                  {selectedColumns.pickupLocation !== false && <th>Local Embarque</th>}
+                  {selectedColumns.periodLabel !== false && <th>Período / Datas</th>}
+                  {selectedColumns.contractedVolume !== false && <th className="num">Contratado</th>}
+                  {selectedColumns.deliveredVolume !== false && <th className="num">Entregue</th>}
+                  {selectedColumns.balanceVolume !== false && <th className="num">Saldo</th>}
+                  {selectedColumns.logisticsStatus !== false && <th>Situação</th>}
+                </tr>
+              </thead>
+              <tbody>
+                {analyticalRows.map((r) => (
+                  <tr key={r.contractId}>
+                    {selectedColumns.contractNumber !== false && <td style={{ fontWeight: 700 }}>{r.contractNumber}</td>}
+                    {selectedColumns.producerName !== false && <td>{r.producerName}</td>}
+                    {selectedColumns.farmName !== false && <td>{r.farmName}</td>}
+                    {selectedColumns.product !== false && <td>{r.product} · {r.crop}</td>}
+                    {selectedColumns.buyerName && <td>{r.buyerName}</td>}
+                    {selectedColumns.freightType !== false && <td>{r.freightType}</td>}
+                    {selectedColumns.pickupLocation !== false && <td>{r.pickupLocation}</td>}
+                    {selectedColumns.periodLabel !== false && <td>{r.window.exactDatesLabel}</td>}
+                    {selectedColumns.contractedVolume !== false && <td className="num">{formatQty(r.contractedVolume, unit)}</td>}
+                    {selectedColumns.deliveredVolume !== false && <td className="num">{formatQty(r.deliveredVolume, unit)}</td>}
+                    {selectedColumns.balanceVolume !== false && <td className="num">{formatQty(r.balanceVolume, unit)}</td>}
+                    {selectedColumns.logisticsStatus !== false && <td>{r.logisticsStatusLabel}</td>}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {mode === 'TRACKING' && (
+          <div>
+            <h2 style={{ fontSize: '11.5px', fontWeight: 700, margin: '0 0 6px 0' }}>
+              Acompanhamento de Entregas e Concentração por Local de Embarque
+            </h2>
+            <table>
+              <thead>
+                <tr>
+                  <th>Local de Embarque</th>
+                  <th className="num">Contratos</th>
+                  <th className="num">Contratado</th>
+                  <th className="num">Entregue Reg.</th>
+                  <th className="num">Saldo</th>
+                  <th className="num">FOB</th>
+                  <th className="num">CIF</th>
+                </tr>
+              </thead>
+              <tbody>
+                {summary.byPickupLocation.map((p) => (
+                  <tr key={p.key}>
+                    <td style={{ fontWeight: 700 }}>{p.label}</td>
+                    <td className="num">{p.contractsCount}</td>
+                    <td className="num">{formatQty(p.contractedVolume, unit)}</td>
+                    <td className="num">{formatQty(p.deliveredVolume, unit)}</td>
+                    <td className="num">{formatQty(p.balanceVolume, unit)}</td>
+                    <td className="num">{formatQty(p.fobVolume, unit)}</td>
+                    <td className="num">{formatQty(p.cifVolume, unit)}</td>
+                  </tr>
+                ))}
+              </tbody>
             </table>
           </div>
         )}

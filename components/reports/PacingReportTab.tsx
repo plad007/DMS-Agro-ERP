@@ -76,44 +76,57 @@ export const PacingReportTab: React.FC<PacingReportTabProps> = ({
     <div className="space-y-5">
       {/* Pacing Controls */}
       <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-4">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3">
           <MultiSelectFilter
+            className="lg:col-span-2"
             label="Produtos"
             placeholder="Todos os produtos"
             options={availableProducts.map((p) => ({ value: p, label: p }))}
             selectedValues={selectedProducts}
             onChange={setSelectedProducts}
+            dropdownMinWidth={240}
+            searchPlaceholder="Buscar produto..."
           />
           <MultiSelectFilter
+            className="lg:col-span-2"
             label="Safras"
             placeholder="Todas as safras"
             options={availableCrops.map((c) => ({ value: c, label: `Safra ${c}` }))}
             selectedValues={selectedCrops}
             onChange={setSelectedCrops}
+            dropdownMinWidth={220}
+            searchPlaceholder="Buscar safra..."
           />
           <MultiSelectFilter
+            className="sm:col-span-2 lg:col-span-4"
             label="Produtores"
             placeholder="Todos os produtores"
             options={producerOptions}
             selectedValues={selectedProducers}
             onChange={setSelectedProducers}
+            dropdownMinWidth={360}
+            maxInlineTags={2}
+            searchPlaceholder="Buscar por nome ou CPF/CNPJ..."
           />
           <MultiSelectFilter
+            className="lg:col-span-2"
             label="Status"
             placeholder="Todos os status"
             options={availableStatuses.map((s) => ({ value: s, label: s }))}
             selectedValues={selectedStatuses}
             onChange={(vals) => setSelectedStatuses(vals as NormalizedContractStatus[])}
+            dropdownMinWidth={240}
+            searchPlaceholder="Buscar status..."
           />
-          <div>
-            <label className="block text-[11px] font-semibold text-slate-600 mb-1 flex items-center gap-1">
-              <Calendar className="w-3 h-3" /> Data de Corte (Equivalente)
+          <div className="lg:col-span-2 min-w-0">
+            <label className="block text-[11px] font-semibold text-slate-600 mb-1 flex items-center gap-1 truncate">
+              <Calendar className="w-3 h-3 shrink-0" /> Data de Corte (Equivalente)
             </label>
             <input
               type="date"
               value={comparisonDate}
               onChange={(e) => setComparisonDate(e.target.value)}
-              className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg bg-white text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              className="w-full h-[38px] px-3 py-1.5 text-xs border border-slate-300 rounded-lg bg-white text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500"
             />
           </div>
         </div>
